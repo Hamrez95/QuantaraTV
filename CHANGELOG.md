@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 — 2026-08-28
+
+- Restored an English-only interface and removed Persian text from the chart panel and Settings.
+- Added native hover tooltips to the panel header and its main fields, plus English Settings tooltips.
+- Added configurable panel text size and clarified the MTF row.
+- Disabled filled risk/reward zones by default while retaining active Entry, Stop, and target lines.
+- Reduced repeated liquidity-sweep labels with a deterministic cooldown.
+- Added independent visibility controls for Fast EMA and Slow EMA.
+
 ## 0.2.0 — 2026-08-28
 
 - Added a default beginner-friendly Simple View with an in-panel color legend and Persian explanations.
