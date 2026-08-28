@@ -659,7 +659,7 @@ if showRadarEff
         array.set(radarVols, i, rv_)
 
 var table panel = table.new(f_pos(panelPos), 4, 22, bgcolor = color.new(C_PANEL, 4), frame_color = C_BORDER, frame_width = 1, border_color = C_BORDER)
-f_cell(int c, int r, string txt, color txtColor = C_TEXT, color bg = C_PANEL, string align = text.align_left) => table.cell(panel, c, r, txt, text_color = txtColor, bgcolor = bg, text_size = size.small, text_halign = align)
+f_cell(int c, int r, string txt, color txtColor = #E6EDF3, color bg = #111821, string align = text.align_left) => table.cell(panel, c, r, txt, text_color = txtColor, bgcolor = bg, text_size = size.small, text_halign = align)
 if barstate.islast
     table.clear(panel, 0, 0, 3, 21)
     int row = 0
