@@ -240,7 +240,7 @@ int radarLimit = resourceProfile == "Radar Focus" ? 10 : 6
 bool fullMacro = resourceProfile == "Macro Focus"
 bool balancedContext = resourceProfile == "Balanced"
 
-int chartSeconds = timeframe.in_seconds()
+float chartSeconds = timeframe.in_seconds()
 bool trendTfEnabled = chartSeconds == timeframe.in_seconds("5") ? trendOn5m : chartSeconds == timeframe.in_seconds("15") ? trendOn15m : chartSeconds == timeframe.in_seconds("60") ? trendOn1h : chartSeconds == timeframe.in_seconds("240") ? trendOn4h : chartSeconds == timeframe.in_seconds("1D") ? trendOn1d : trendOnOther
 bool showTrendlinesEff = showTrendlines and trendTfEnabled and displayMode != "Radar Focus"
 
@@ -358,21 +358,25 @@ var line downTrend = na
 var line channelLine = na
 if showTrendlinesEff and not na(pl) and not na(prevLowBar) and lastLowBar > prevLowBar
     line.delete(upTrend)
+    upTrend := na
     if lastLow > prevLow
         float upSlope = (lastLow - prevLow) / (lastLowBar - prevLowBar)
         upTrend := line.new(prevLowBar, prevLow, lastLowBar + trendProjectionBars, lastLow + upSlope * trendProjectionBars, extend = extend.none, color = color.new(C_BULL, 20), width = 2)
     if showChannel and not na(prevHigh)
         line.delete(channelLine)
+        channelLine := na
         if lastLow > prevLow
             float channelSlope = (lastLow - prevLow) / (lastLowBar - prevLowBar)
             channelLine := line.new(prevLowBar, prevHigh, lastLowBar + trendProjectionBars, prevHigh + channelSlope * (lastLowBar + trendProjectionBars - prevLowBar), extend = extend.none, color = color.new(C_BULL, 60), style = line.style_dashed)
 if showTrendlinesEff and not na(ph) and not na(prevHighBar) and lastHighBar > prevHighBar
     line.delete(downTrend)
+    downTrend := na
     if lastHigh < prevHigh
         float downSlope = (lastHigh - prevHigh) / (lastHighBar - prevHighBar)
         downTrend := line.new(prevHighBar, prevHigh, lastHighBar + trendProjectionBars, lastHigh + downSlope * trendProjectionBars, extend = extend.none, color = color.new(C_BEAR, 20), width = 2)
     if showChannel and not na(prevLow)
         line.delete(channelLine)
+        channelLine := na
         if lastHigh < prevHigh
             float channelSlope = (lastHigh - prevHigh) / (lastHighBar - prevHighBar)
             channelLine := line.new(prevHighBar, prevLow, lastHighBar + trendProjectionBars, prevLow + channelSlope * (lastHighBar + trendProjectionBars - prevHighBar), extend = extend.none, color = color.new(C_BEAR, 60), style = line.style_dashed)
@@ -655,7 +659,7 @@ if newCandidate and showRiskPlan and displayMode != "Radar Focus"
     tp3Line := line.new(bar_index, tp3, bar_index + 25, tp3, color = C_BULL, style = line.style_dashed)
     riskBox := box.new(bar_index, math.max(entry, stop), bar_index + 25, math.min(entry, stop), bgcolor = color.new(C_BEAR, 93), border_color = color.new(C_BEAR, 65))
     rewardBox := box.new(bar_index, math.max(entry, tp3), bar_index + 25, math.min(entry, tp3), bgcolor = color.new(C_BULL, 93), border_color = color.new(C_BULL, 65))
-if activeState and showRiskPlan
+if activeState and showRiskPlan and displayMode != "Radar Focus" and not na(entryLine)
     line.set_x2(entryLine, bar_index + 1), line.set_x2(stopLine, bar_index + 1), line.set_x2(tp1Line, bar_index + 1), line.set_x2(tp2Line, bar_index + 1), line.set_x2(tp3Line, bar_index + 1)
     box.set_right(riskBox, bar_index + 1), box.set_right(rewardBox, bar_index + 1)
 bool planEndedNow = invalidatedNow or target3Now or signalState == "Expired" and signalState[1] != "Expired"
