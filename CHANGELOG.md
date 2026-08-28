@@ -1,11 +1,27 @@
 # Changelog
 
+## v0.4.0
+
+- Hardened session semantics, structural-stop safety, pre-candidate trade economics, re-entry guards, and JSON alerts.
+- Added actionable clustered level role reversal and selected confirmed HTF-channel decision gating.
+- Replaced broad EMA-heavy aggregation with explicit decision-gate playbooks and a `NEXT` panel row.
+- Updated the validation strategy and static checks for the structural-stop contract.
+
+## 0.3.0 — 2026-08-28
+
+- Restored filled Entry/Stop/TP position-plan zones as the default active-plan view.
+- Added selectable, confirmed higher-timeframe pivot trendlines and parallel channels without adding request contexts; TF 4 (default 4H) is ready for inspection on lower-timeframe charts.
+- Added higher-timeframe channel labels and safe suppression when a selected source timeframe is below the chart timeframe.
+- Added exchange/session status with IANA/DST-aware London and New York windows and an honest exchange-holiday limitation.
+- Added context-aware Morning/Evening Star, Three Soldiers/Crows, Engulfing, Hammer/Shooting Star, and Inside-Bar expansion recognition.
+- Integrated candle analysis into the 15-point Price Action family, added indecision penalties, optional bounded pattern labels, and captured setup names in active plans and alerts.
+
 ## 0.2.1 — 2026-08-28
 
 - Restored an English-only interface and removed Persian text from the chart panel and Settings.
 - Added native hover tooltips to the panel header and its main fields, plus English Settings tooltips.
 - Added configurable panel text size and clarified the MTF row.
-- Disabled filled risk/reward zones by default while retaining active Entry, Stop, and target lines.
+- Disabled filled risk/reward zones by default while retaining active Entry, Stop, and target lines (restored by default in 0.3.0 after user testing).
 - Reduced repeated liquidity-sweep labels with a deterministic cooldown.
 - Added independent visibility controls for Fast EMA and Slow EMA.
 

@@ -16,3 +16,14 @@
 | MTF/context/event/radar | Yes | Excluded | Intentional; isolate core rules |
 
 Any future core-rule change must update both Pine files and this table in the same PR.
+# v0.4.0 parity status
+
+| Production rule | Validation strategy | Status |
+| --- | --- | --- |
+| Confirmed pivots and HH/HL or LH/LL context | Same pivot-confirmed core | Covered |
+| Level location | Latest confirmed pivot proxy only | Partial — production clustered role-reversal levels are richer |
+| Candle trigger | Engulfing + structure/level core | Partial — production includes retest, sweep, session, and channel triggers |
+| Structural stop | Same no-tightening rule and maximum-stop rejection | Covered |
+| R:R and costs | Strategy Properties plus representative target | Partial — production uses configured spread/fee/slippage and opposing clustered level |
+| Confirmed MTF / HTF channel | Not requested by strategy | Not covered by design; validation keeps a stable core only |
+| Crypto, Forex, macro, events, Radar | Not scored by strategy | Not covered; these are context/discovery modules, not a backtest claim |
