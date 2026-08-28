@@ -23,7 +23,7 @@ Display modes follow the Design Freeze: Full, Compact, Minimal, Radar Focus, Sig
 - `Show Active Entry / Stop / Targets`: on. Completed, expired, or invalidated plans are removed from the chart.
 - `Radar`: use `Radar Focus` when you want screening; Simple + Compact intentionally hides it.
 
-Every beginner-facing visibility control includes a Persian tooltip in TradingView Settings. Hover the information icon beside an input to read it.
+The interface and help text are English-only. Beginner-facing visibility controls include a native TradingView tooltip; hover the information icon beside an input to read it. Main panel fields also expose native cell tooltips when `Enable Hover Help` is on.
 
 ## Visual language
 
