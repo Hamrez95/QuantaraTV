@@ -12,3 +12,25 @@ All 22 requested native groups exist. Presets are internal effective configurati
 The estimates include five confirmed MTF requests. Actual contexts can be lower when a module is disabled. Debug exposes the current estimate; none of the profiles intentionally approaches the 40-context Basic-plan ceiling.
 
 Display modes follow the Design Freeze: Full, Compact, Minimal, Radar Focus, Signal Focus, and Analysis Only. Analysis Only suppresses candidates and risk plans while retaining technical analysis.
+
+## Recommended first-use settings
+
+- `Simple View / حالت ساده`: on.
+- `Display Mode`: Compact.
+- `Session Background Master Switch`: off. Vertical background bands are session shading, not signals.
+- `Previous Asia High / Low`: off. Enable it only when trading an Asia-range breakout method.
+- `Enable Pivot Trendlines`: off initially. When enabled, 5m, 15m, 1h, 4h, 1D, and other chart timeframes have separate switches.
+- `Show Active Entry / Stop / Targets`: on. Completed, expired, or invalidated plans are removed from the chart.
+- `Radar`: use `Radar Focus` when you want screening; Simple + Compact intentionally hides it.
+
+Every beginner-facing visibility control includes a Persian tooltip in TradingView Settings. Hover the information icon beside an input to read it.
+
+## Visual language
+
+| Color / mark | Meaning |
+|---|---|
+| Teal `▲` | Bullish evidence, support, or profit target |
+| Coral `▼` | Bearish evidence, resistance, or stop |
+| Amber `◆` | Wait, neutral, or warning |
+| Blue | Entry or informational context |
+| Purple | Broader market/session context, never a directional signal by itself |
