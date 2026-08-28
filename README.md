@@ -6,13 +6,13 @@ It does not execute orders, fetch arbitrary news, promise profitability, or depe
 
 ## Install
 
-Copy [`src/quantara_vision.pine`](src/quantara_vision.pine) into TradingView Pine Editor, save, choose **Add to chart**, and start with `Balanced / Intraday / Compact / Balanced`. Version 0.2.1 keeps the interface English-only, enables native hover help, keeps filled risk zones/session shading/pivot trendlines off initially, and shows only active trade-plan lines.
+Copy [`src/quantara_vision.pine`](src/quantara_vision.pine) into TradingView Pine Editor, save, choose **Add to chart**, and start with `Balanced / Intraday / Compact / Balanced`. Version 0.3.0 keeps the interface English-only, enables native hover help, restores filled active position plans, and adds selectable confirmed higher-timeframe channels plus context-aware candle-pattern scoring.
 
 The validation companion is [`src/quantara_validation_strategy.pine`](src/quantara_validation_strategy.pine). It intentionally duplicates the documented core rules because Pine cannot import arbitrary local files.
 
 ## Status
 
-- Version: `0.2.1`
+- Version: `0.3.0`
 - Design baseline: Quantara Vision Design Freeze v1.0
 - Static checks: automated in GitHub Actions
 - TradingView compiler: must be verified in the authenticated Pine Editor before calling the release compiler-verified
