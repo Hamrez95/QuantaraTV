@@ -24,20 +24,20 @@ head -n 1 "$strategy" | grep -qxF '//@version=6'
 grep -q 'indicator("Quantara Vision' "$indicator"
 grep -q 'strategy("Quantara Vision' "$strategy"
 
-if rg -n '(password|api[_-]?key|secret|private[_-]?key)\s*[:=]\s*["'"'"'][^"'"'"']+' "$root" --glob '!tests/static_checks.sh'; then
+if grep -REn --exclude='static_checks.sh' '(password|api[_-]?key|secret|private[_-]?key)[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"']+' "$root"; then
   echo "Possible credential committed"
   exit 1
 fi
 
-if rg -n 'lookahead\s*=\s*barmerge\.lookahead_on' "$indicator" | while IFS=: read -r line _; do
+if grep -En 'lookahead[[:space:]]*=[[:space:]]*barmerge\.lookahead_on' "$indicator" | while IFS=: read -r line _; do
   sed -n "${line}p" "$indicator" | grep -q '\[1\]'
 done; then :; else
   echo "Unsafe HTF lookahead_on call: every occurrence must include an offset"
   exit 1
 fi
 
-[[ "$(rg -o 'request\.(security|economic|financial|earnings)\(' "$indicator" | wc -l)" -le 40 ]]
-[[ "$(rg -o 'max_(lines|labels|boxes)_count\s*=\s*[0-9]+' "$indicator" | wc -l)" -eq 3 ]]
-! rg -n 'TODO|FIXME|guaranteed|risk-free|institutional signal|90% win rate' "$root/src" 
+[[ "$(grep -Eo 'request\.(security|economic|financial|earnings)\(' "$indicator" | wc -l)" -le 40 ]]
+[[ "$(grep -Eo 'max_(lines|labels|boxes)_count[[:space:]]*=[[:space:]]*[0-9]+' "$indicator" | wc -l)" -eq 3 ]]
+! grep -REn 'TODO|FIXME|guaranteed|risk-free|institutional signal|90% win rate' "$root/src"
 
 echo "Quantara Vision static checks passed"
