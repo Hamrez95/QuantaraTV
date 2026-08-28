@@ -1,5 +1,5 @@
 //@version=6
-indicator("Quantara Vision v0.1.0", "Quantara Vision", overlay = true, max_bars_back = 1500, max_lines_count = 240, max_labels_count = 160, max_boxes_count = 80, dynamic_requests = true)
+indicator("Quantara Vision v0.2.0", "Quantara Vision", overlay = true, max_bars_back = 1500, max_lines_count = 240, max_labels_count = 160, max_boxes_count = 80, dynamic_requests = true)
 
 // Quantara Vision is decision support, not financial advice. Confirmed signals use closed bars.
 // External headlines/order flow are intentionally unavailable in Pine; event slots are user supplied.
@@ -44,7 +44,9 @@ string G22 = "22 · Debug"
 string preset = input.string("Balanced", "Preset", options = ["Crypto", "Forex", "Scalping", "Intraday", "Swing", "Aggressive", "Balanced", "Conservative", "Custom"], group = G01, tooltip = "Presets are effective internal configurations. Choose Custom to use every detailed threshold.")
 string displayMode = input.string("Compact", "Display Mode", options = ["Full", "Compact", "Minimal", "Radar Focus", "Signal Focus", "Analysis Only"], group = G01)
 string panelPos = input.string("Top Right", "Panel Position", options = ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group = G01)
-bool showTooltips = input.bool(true, "Show Context Notes", group = G01)
+bool beginnerMode = input.bool(true, "Simple View / حالت ساده", group = G01, tooltip = "پیشنهادی برای شروع: فقط تصمیم، امتیاز، ریسک و معنی رنگ‌ها را نشان می‌دهد. قابلیت‌های حرفه‌ای همچنان از تنظیمات قابل فعال‌سازی هستند.")
+bool showGuide = input.bool(true, "Color Guide / راهنمای رنگ", group = G01, tooltip = "سبزآبی = صعود یا هدف، قرمز = نزول یا حد ضرر، زرد = هشدار یا صبر، آبی = ورود یا اطلاعات، بنفش = زمینه بازار.")
+bool showTooltips = input.bool(true, "Show Context Notes", group = G01, tooltip = "در پنل، توضیح کوتاه وضعیت بازار نمایش داده می‌شود.")
 
 string marketOverride = input.string("Auto", "Market", options = ["Auto", "Crypto", "Forex", "Stock", "Index", "Commodity", "Futures", "Generic"], group = G02)
 string styleInput = input.string("Intraday", "Trading Style", options = ["Scalping", "Intraday", "Swing"], group = G03)
@@ -52,27 +54,38 @@ int customPivot = input.int(5, "Custom Pivot Strength", 2, 20, group = G03)
 float customMinScore = input.float(65, "Custom Minimum Candidate Score", 0, 100, 1, group = G03)
 bool confirmClose = input.bool(true, "Confirm Signals On Bar Close", group = G03)
 
-bool showSessions = input.bool(true, "Show Sessions", group = G04)
+bool showSessions = input.bool(true, "Use Sessions In Analysis", group = G04, tooltip = "سشن فعال را در تحلیل و امتیاز لحاظ می‌کند؛ این گزینه به‌تنهایی پس‌زمینه رنگی ایجاد نمی‌کند.")
 string asiaSession = input.session("0000-0800:1234567", "Asia", group = G04)
 string londonSession = input.session("0800-1700:1234567", "London", group = G04)
 string nySession = input.session("1330-2000:1234567", "New York", group = G04)
 string asiaZone = input.string("Asia/Singapore", "Asia IANA Time Zone", group = G04)
 string londonZone = input.string("Europe/London", "London IANA Time Zone", group = G04)
 string nyZone = input.string("America/New_York", "New York IANA Time Zone", group = G04)
-bool showPrevSession = input.bool(true, "Previous Session High / Low", group = G04)
+bool showPrevSession = input.bool(false, "Previous Asia High / Low", group = G04, tooltip = "سقف و کف سشن آسیای قبلی را رسم می‌کند. برای نمودار خلوت، خاموش بماند.")
+bool showAsiaBg = input.bool(false, "Shade Asia", group = G04, inline = "session-bg", tooltip = "پس‌زمینه بنفش بسیار کم‌رنگ یعنی سشن آسیا.")
+bool showLondonBg = input.bool(false, "London", group = G04, inline = "session-bg", tooltip = "پس‌زمینه آبی بسیار کم‌رنگ یعنی سشن لندن.")
+bool showNyBg = input.bool(false, "New York", group = G04, inline = "session-bg", tooltip = "پس‌زمینه زرد بسیار کم‌رنگ یعنی سشن نیویورک.")
+bool showOverlapBg = input.bool(false, "Overlap", group = G04, inline = "session-bg2", tooltip = "هم‌پوشانی لندن و نیویورک را با رنگ جدا نشان می‌دهد.")
 
-bool showStructure = input.bool(true, "Show Confirmed Structure", group = G05)
-int maxStructureLabels = input.int(24, "Maximum Recent Labels", 4, 60, group = G05)
+bool showStructure = input.bool(true, "Show Confirmed Structure", group = G05, tooltip = "HH=سقف بالاتر، HL=کف بالاتر، LH=سقف پایین‌تر، LL=کف پایین‌تر، BOS=شکست ساختار، CHoCH=احتمال تغییر ساختار.")
+int maxStructureLabels = input.int(12, "Maximum Recent Labels", 4, 60, group = G05, tooltip = "فقط همین تعداد برچسب ساختاری آخر نگهداری می‌شود تا نمودار شلوغ نشود.")
 float breakoutAtr = input.float(0.12, "Breakout Confirmation · ATR", 0, 1, 0.01, group = G05)
 int structureExpiry = input.int(120, "Setup Expiry Bars", 10, 500, group = G05)
 
-bool showLevels = input.bool(true, "Show Levels", group = G06)
-int maxLevels = input.int(8, "Maximum Visible Levels", 2, 16, group = G06)
+bool showLevels = input.bool(true, "Show Levels", group = G06, tooltip = "خط سبزآبی حمایت و خط قرمز مقاومت است. خط‌چین یعنی سطح چندبار تست شده و نقطه‌چین یعنی شکسته شده.")
+int maxLevels = input.int(5, "Maximum Visible Levels", 2, 16, group = G06)
 float clusterAtr = input.float(0.35, "Clustering Distance · ATR", 0.05, 2, 0.05, group = G06)
 int levelLookback = input.int(300, "Level Lookback", 50, 1000, group = G06)
 
-bool showTrendlines = input.bool(true, "Confirmed Pivot Trendlines", group = G07)
-bool showChannel = input.bool(false, "Parallel Channel Approximation", group = G07)
+bool showTrendlines = input.bool(false, "Enable Pivot Trendlines", group = G07, tooltip = "فقط دو پیوت تأییدشده را وصل می‌کند؛ پیش‌فرض خاموش است تا ابتدا نمودار ساده بماند.")
+bool trendOn5m = input.bool(true, "5m", group = G07, inline = "trend-tf1", tooltip = "نمایش ترندلاین وقتی تایم‌فریم چارت 5 دقیقه است.")
+bool trendOn15m = input.bool(true, "15m", group = G07, inline = "trend-tf1", tooltip = "نمایش ترندلاین وقتی تایم‌فریم چارت 15 دقیقه است.")
+bool trendOn1h = input.bool(true, "1h", group = G07, inline = "trend-tf1", tooltip = "نمایش ترندلاین وقتی تایم‌فریم چارت 1 ساعت است.")
+bool trendOn4h = input.bool(true, "4h", group = G07, inline = "trend-tf2", tooltip = "نمایش ترندلاین وقتی تایم‌فریم چارت 4 ساعت است.")
+bool trendOn1d = input.bool(true, "1D", group = G07, inline = "trend-tf2", tooltip = "نمایش ترندلاین وقتی تایم‌فریم چارت روزانه است.")
+bool trendOnOther = input.bool(false, "Other TF", group = G07, inline = "trend-tf2", tooltip = "نمایش ترندلاین روی سایر تایم‌فریم‌ها.")
+int trendProjectionBars = input.int(60, "Projection Bars", 5, 250, group = G07, tooltip = "ترندلاین بعد از پیوت دوم فقط به این تعداد کندل ادامه پیدا می‌کند و تا بی‌نهایت کشیده نمی‌شود.")
+bool showChannel = input.bool(false, "Parallel Channel Approximation", group = G07, tooltip = "کانال موازی تقریبی است؛ برای شروع خاموش بماند.")
 int emaFastLen = input.int(20, "Fast EMA", 2, 100, group = G07)
 int emaSlowLen = input.int(50, "Slow EMA", 5, 300, group = G07)
 
@@ -167,7 +180,7 @@ float contextWeight = input.float(5, "Market / Macro Maximum Weight", 0, 10, 0.5
 float eventPenaltyInput = input.float(15, "High Event Risk Penalty", 0, 50, 1, group = G17)
 int staleBars = input.int(40, "Stale Setup Bars", 5, 500, group = G17)
 
-bool enableRadar = input.bool(true, "Enable Configured-Symbol Radar", group = G18)
+bool enableRadar = input.bool(true, "Enable Configured-Symbol Radar", group = G18, tooltip = "فقط نمادهای تنظیم‌شده را بررسی می‌کند. در حالت ساده + Compact پنهان است؛ برای دیدن آن Radar Focus را انتخاب کن.")
 string radarState = input.string("Compact", "State", options = ["Expanded", "Compact", "Collapsed"], group = G18)
 string radarTf = input.timeframe("60", "Radar Timeframe", group = G18)
 string r1 = input.symbol("BINANCE:BTCUSDT", "1", group = G18, inline = "r1")
@@ -182,8 +195,8 @@ string r9 = input.symbol("OANDA:EURUSD", "9", group = G18, inline = "r5")
 string r10 = input.symbol("OANDA:GBPUSD", "10", group = G18, inline = "r5")
 
 bool colorBars = input.bool(false, "Subtle Regime Bar Colors", group = G19)
-bool showRiskPlan = input.bool(true, "Show Entry / Stop / Targets", group = G19)
-bool showSessionBg = input.bool(true, "Low-Opacity Session Background", group = G19)
+bool showRiskPlan = input.bool(true, "Show Active Entry / Stop / Targets", group = G19, tooltip = "فقط برنامه معامله فعال را نشان می‌دهد و بعد از پایان یا ابطال، خطوط آن پاک می‌شوند.")
+bool showSessionBg = input.bool(false, "Session Background Master Switch", group = G19, tooltip = "هایلایت‌های عمودی مربوط به سشن‌ها هستند. برای نمایش، این گزینه و سشن موردنظر در گروه Sessions باید هر دو روشن باشند.")
 
 bool alertsEnabled = input.bool(true, "Enable Runtime Alerts", group = G20)
 bool jsonAlerts = input.bool(false, "JSON Alert Messages", group = G20)
@@ -222,10 +235,14 @@ bool isStock = marketType == "Stock"
 bool signalsAllowed = displayMode != "Analysis Only"
 bool compactMode = displayMode == "Compact" or displayMode == "Minimal"
 bool showSignalPanel = displayMode != "Minimal" and displayMode != "Radar Focus" and displayMode != "Analysis Only"
-bool showRadarEff = enableRadar and displayMode != "Minimal" and displayMode != "Signal Focus" and displayMode != "Analysis Only" and resourceProfile != "Chart Focus" and resourceProfile != "Macro Focus"
+bool showRadarEff = enableRadar and not (beginnerMode and displayMode == "Compact") and displayMode != "Minimal" and displayMode != "Signal Focus" and displayMode != "Analysis Only" and resourceProfile != "Chart Focus" and resourceProfile != "Macro Focus"
 int radarLimit = resourceProfile == "Radar Focus" ? 10 : 6
 bool fullMacro = resourceProfile == "Macro Focus"
 bool balancedContext = resourceProfile == "Balanced"
+
+float chartSeconds = timeframe.in_seconds()
+bool trendTfEnabled = chartSeconds == timeframe.in_seconds("5") ? trendOn5m : chartSeconds == timeframe.in_seconds("15") ? trendOn15m : chartSeconds == timeframe.in_seconds("60") ? trendOn1h : chartSeconds == timeframe.in_seconds("240") ? trendOn4h : chartSeconds == timeframe.in_seconds("1D") ? trendOn1d : trendOnOther
+bool showTrendlinesEff = showTrendlines and trendTfEnabled and displayMode != "Radar Focus"
 
 float atr = ta.atr(atrLen)
 float atrPct = close != 0 ? atr / close * 100 : na
@@ -339,20 +356,32 @@ if (sweepHigh or sweepLow) and showStructure
 var line upTrend = na
 var line downTrend = na
 var line channelLine = na
-if showTrendlines and not na(pl) and not na(prevLowBar) and lastLowBar > prevLowBar
+if showTrendlinesEff and not na(pl) and not na(prevLowBar) and lastLowBar > prevLowBar
     line.delete(upTrend)
-    upTrend := line.new(prevLowBar, prevLow, lastLowBar, lastLow, extend = extend.right, color = color.new(C_MUTED, 30), style = line.style_dashed)
+    upTrend := na
+    if lastLow > prevLow
+        float upSlope = (lastLow - prevLow) / (lastLowBar - prevLowBar)
+        upTrend := line.new(prevLowBar, prevLow, lastLowBar + trendProjectionBars, lastLow + upSlope * trendProjectionBars, extend = extend.none, color = color.new(C_BULL, 20), width = 2)
     if showChannel and not na(prevHigh)
         line.delete(channelLine)
-        channelLine := line.new(prevLowBar, prevHigh, lastLowBar, prevHigh + (lastLow - prevLow), extend = extend.right, color = color.new(C_MUTED, 55), style = line.style_dashed)
-if showTrendlines and not na(ph) and not na(prevHighBar) and lastHighBar > prevHighBar
+        channelLine := na
+        if lastLow > prevLow
+            float channelSlope = (lastLow - prevLow) / (lastLowBar - prevLowBar)
+            channelLine := line.new(prevLowBar, prevHigh, lastLowBar + trendProjectionBars, prevHigh + channelSlope * (lastLowBar + trendProjectionBars - prevLowBar), extend = extend.none, color = color.new(C_BULL, 60), style = line.style_dashed)
+if showTrendlinesEff and not na(ph) and not na(prevHighBar) and lastHighBar > prevHighBar
     line.delete(downTrend)
-    downTrend := line.new(prevHighBar, prevHigh, lastHighBar, lastHigh, extend = extend.right, color = color.new(C_MUTED, 30), style = line.style_dashed)
+    downTrend := na
+    if lastHigh < prevHigh
+        float downSlope = (lastHigh - prevHigh) / (lastHighBar - prevHighBar)
+        downTrend := line.new(prevHighBar, prevHigh, lastHighBar + trendProjectionBars, lastHigh + downSlope * trendProjectionBars, extend = extend.none, color = color.new(C_BEAR, 20), width = 2)
     if showChannel and not na(prevLow)
         line.delete(channelLine)
-        channelLine := line.new(prevHighBar, prevLow, lastHighBar, prevLow + (lastHigh - prevHigh), extend = extend.right, color = color.new(C_MUTED, 55), style = line.style_dashed)
-float upTrendNow = not na(upTrend) ? line.get_price(upTrend, bar_index) : na
-float downTrendNow = not na(downTrend) ? line.get_price(downTrend, bar_index) : na
+        channelLine := na
+        if lastHigh < prevHigh
+            float channelSlope = (lastHigh - prevHigh) / (lastHighBar - prevHighBar)
+            channelLine := line.new(prevHighBar, prevLow, lastHighBar + trendProjectionBars, prevLow + channelSlope * (lastHighBar + trendProjectionBars - prevHighBar), extend = extend.none, color = color.new(C_BEAR, 60), style = line.style_dashed)
+float upTrendNow = not na(upTrend) and bar_index <= line.get_x2(upTrend) ? line.get_price(upTrend, bar_index) : na
+float downTrendNow = not na(downTrend) and bar_index <= line.get_x2(downTrend) ? line.get_price(downTrend, bar_index) : na
 bool trendBreakDown = not na(upTrendNow) and close < upTrendNow and close[1] >= nz(upTrendNow[1], upTrendNow)
 bool trendBreakUp = not na(downTrendNow) and close > downTrendNow and close[1] <= nz(downTrendNow[1], downTrendNow)
 
@@ -379,9 +408,10 @@ if asiaEnd
 bool londonAsiaBreakUp = londonActive and not na(prevAsiaHigh) and close > prevAsiaHigh and close[1] <= prevAsiaHigh
 bool londonAsiaBreakDown = londonActive and not na(prevAsiaLow) and close < prevAsiaLow and close[1] >= prevAsiaLow
 bool lowLiquidity = not asiaActive and not londonActive and not nyActive
-bgcolor(showSessions and showSessionBg ? overlapActive ? color.new(C_CRYPTO, 92) : londonActive ? color.new(C_INFO, 94) : nyActive ? color.new(C_WARN, 95) : asiaActive ? color.new(C_CRYPTO, 95) : na : na)
-plot(showPrevSession ? prevAsiaHigh : na, "Previous Asia High", color.new(C_CRYPTO, 40), 1, plot.style_linebr)
-plot(showPrevSession ? prevAsiaLow : na, "Previous Asia Low", color.new(C_CRYPTO, 40), 1, plot.style_linebr)
+color sessionShade = overlapActive and showOverlapBg ? color.new(C_CRYPTO, 94) : londonActive and showLondonBg ? color.new(C_INFO, 96) : nyActive and showNyBg ? color.new(C_WARN, 97) : asiaActive and showAsiaBg ? color.new(C_CRYPTO, 97) : na
+bgcolor(showSessions and showSessionBg ? sessionShade : na, title = "Session shading")
+plot(showPrevSession ? prevAsiaHigh : na, "Previous Asia High", color.new(C_CRYPTO, 55), 1, plot.style_linebr, display = display.pane)
+plot(showPrevSession ? prevAsiaLow : na, "Previous Asia Low", color.new(C_CRYPTO, 55), 1, plot.style_linebr, display = display.pane)
 
 float body = math.max(math.abs(close - open), syminfo.mintick)
 float upperWick = high - math.max(open, close)
@@ -629,15 +659,24 @@ if newCandidate and showRiskPlan and displayMode != "Radar Focus"
     tp3Line := line.new(bar_index, tp3, bar_index + 25, tp3, color = C_BULL, style = line.style_dashed)
     riskBox := box.new(bar_index, math.max(entry, stop), bar_index + 25, math.min(entry, stop), bgcolor = color.new(C_BEAR, 93), border_color = color.new(C_BEAR, 65))
     rewardBox := box.new(bar_index, math.max(entry, tp3), bar_index + 25, math.min(entry, tp3), bgcolor = color.new(C_BULL, 93), border_color = color.new(C_BULL, 65))
-if activeState and showRiskPlan
+if activeState and showRiskPlan and displayMode != "Radar Focus" and not na(entryLine)
     line.set_x2(entryLine, bar_index + 1), line.set_x2(stopLine, bar_index + 1), line.set_x2(tp1Line, bar_index + 1), line.set_x2(tp2Line, bar_index + 1), line.set_x2(tp3Line, bar_index + 1)
     box.set_right(riskBox, bar_index + 1), box.set_right(rewardBox, bar_index + 1)
-if invalidatedNow
-    line.set_color(entryLine, color.new(C_INFO, 70)), line.set_color(stopLine, color.new(C_BEAR, 70)), line.set_color(tp1Line, color.new(C_BULL, 75)), line.set_color(tp2Line, color.new(C_BULL, 75)), line.set_color(tp3Line, color.new(C_BULL, 80))
+bool planEndedNow = invalidatedNow or target3Now or signalState == "Expired" and signalState[1] != "Expired"
+if planEndedNow
+    line.delete(entryLine), line.delete(stopLine), line.delete(tp1Line), line.delete(tp2Line), line.delete(tp3Line)
+    box.delete(riskBox), box.delete(rewardBox)
+    entryLine := na
+    stopLine := na
+    tp1Line := na
+    tp2Line := na
+    tp3Line := na
+    riskBox := na
+    rewardBox := na
 
-plot(showVwap and volumeAvailable ? vwapValue : na, "VWAP", C_CRYPTO, 1)
-plot(emaFast, "Fast EMA", color.new(C_INFO, 45), 1)
-plot(emaSlow, "Slow EMA", color.new(C_NEUTRAL, 45), 1)
+plot(showVwap and volumeAvailable ? vwapValue : na, "VWAP", C_CRYPTO, 1, display = display.pane)
+plot(emaFast, "Fast EMA", color.new(C_INFO, 45), 1, display = display.pane)
+plot(emaSlow, "Slow EMA", color.new(C_NEUTRAL, 45), 1, display = display.pane)
 barcolor(colorBars ? color.new(f_dir_color(structureDir), 65) : na)
 
 f_radar_score(string symbol) =>
@@ -665,26 +704,35 @@ if barstate.islast
     int row = 0
     if showSignalPanel
         color stateColor = signalState == "Invalidated" ? C_MUTED : signalDirection > 0 ? C_BULL : signalDirection < 0 ? C_BEAR : signalState == "High Risk" ? C_WARN : C_NEUTRAL
-        string stateText = signalState == "Candidate" or signalState == "Active Plan" ? (signalDirection > 0 ? "▲ LONG CANDIDATE" : "▼ SHORT CANDIDATE") : signalState == "Early Watch" ? "◆ EARLY WATCH" : signalState == "Invalidated" ? "× INVALIDATED" : signalState == "High Risk" ? "⚠ HIGH RISK" : signalState == "Target Reached" ? "TP3 · TARGET REACHED" : "— NO TRADE"
-        f_cell(0, row, "QUANTARA VISION", C_CRYPTO), f_cell(1, row, "v0.1.0", C_MUTED), f_cell(2, row, syminfo.ticker, C_TEXT), f_cell(3, row, timeframe.period, C_MUTED), row += 1
+        string stateTextEn = signalState == "Candidate" or signalState == "Active Plan" ? (signalDirection > 0 ? "▲ LONG CANDIDATE" : "▼ SHORT CANDIDATE") : signalState == "Early Watch" ? "◆ EARLY WATCH" : signalState == "Invalidated" ? "× INVALIDATED" : signalState == "High Risk" ? "⚠ HIGH RISK" : signalState == "Target Reached" ? "TP3 · TARGET REACHED" : "— NO TRADE"
+        string stateTextFa = signalState == "Candidate" or signalState == "Active Plan" ? (signalDirection > 0 ? "▲ موقعیت احتمالی خرید" : "▼ موقعیت احتمالی فروش") : signalState == "Early Watch" ? "◆ زیر نظر بگیر" : signalState == "High Risk" ? "⚠ ریسک بالا" : "— فعلاً معامله نکن"
+        string stateText = beginnerMode ? stateTextFa : stateTextEn
+        f_cell(0, row, "QUANTARA VISION", C_CRYPTO), f_cell(1, row, "v0.2.0", C_MUTED), f_cell(2, row, syminfo.ticker, C_TEXT), f_cell(3, row, timeframe.period, C_MUTED), row += 1
+        if beginnerMode and showGuide
+            f_cell(0, row, "▲ سبز: صعود/هدف", C_BULL), f_cell(1, row, "▼ قرمز: نزول/حد ضرر", C_BEAR), f_cell(2, row, "◆ زرد: صبر/هشدار", C_WARN), f_cell(3, row, "آبی: ورود/اطلاعات", C_INFO), row += 1
         f_cell(0, row, stateText, stateColor), f_cell(1, row, "", stateColor), f_cell(2, row, "SCORE", C_MUTED), f_cell(3, row, str.tostring(math.round(activeState ? activeScore : rawScore)) + "/100", stateColor, C_PANEL, text.align_right), row += 1
-        f_cell(0, row, "Regime", C_MUTED), f_cell(1, row, f_dir_text(structureDir), f_dir_color(structureDir)), f_cell(2, row, "Session", C_MUTED), f_cell(3, row, activeSession, C_INFO), row += 1
+        f_cell(0, row, beginnerMode ? "جهت بازار" : "Regime", C_MUTED), f_cell(1, row, f_dir_text(structureDir), f_dir_color(structureDir)), f_cell(2, row, beginnerMode ? "سشن فعال" : "Session", C_MUTED), f_cell(3, row, activeSession, C_INFO), row += 1
         f_cell(0, row, tf1 + " " + f_tf_mark(mtf1), f_dir_color(mtf1)), f_cell(1, row, tf2 + " " + f_tf_mark(mtf2), f_dir_color(mtf2)), f_cell(2, row, tf3 + " " + f_tf_mark(mtf3), f_dir_color(mtf3)), f_cell(3, row, tf4 + " " + f_tf_mark(mtf4), f_dir_color(mtf4)), row += 1
-        if activeState or signalState == "Invalidated" or signalState == "Target Reached"
-            f_cell(0, row, "Entry", C_MUTED), f_cell(1, row, f_fmt(entry), C_INFO), f_cell(2, row, "Stop", C_MUTED), f_cell(3, row, f_fmt(stop), C_BEAR), row += 1
+        if activeState
+            f_cell(0, row, beginnerMode ? "ورود" : "Entry", C_MUTED), f_cell(1, row, f_fmt(entry), C_INFO), f_cell(2, row, beginnerMode ? "حد ضرر" : "Stop", C_MUTED), f_cell(3, row, f_fmt(stop), C_BEAR), row += 1
             f_cell(0, row, "TP1", C_MUTED), f_cell(1, row, f_fmt(tp1), C_BULL), f_cell(2, row, "TP2", C_MUTED), f_cell(3, row, f_fmt(tp2), C_BULL), row += 1
             f_cell(0, row, "TP3", C_MUTED), f_cell(1, row, f_fmt(tp3), C_BULL), f_cell(2, row, "Net R:R", C_MUTED), f_cell(3, row, na(netRR) ? "—" : "1:" + str.tostring(netRR, "#.##"), weakEconomics ? C_WARN : C_BULL), row += 1
-            f_cell(0, row, isForex ? "Lots approx." : "Units", C_MUTED), f_cell(1, row, str.tostring(isForex ? forexLots : units, "#.####"), C_TEXT), f_cell(2, row, "Margin est.", C_MUTED), f_cell(3, row, str.tostring(estimatedMargin, "#.##") + " " + accountCurrency, C_TEXT), row += 1
-            f_cell(0, row, "Invalidation", C_WARN), f_cell(1, row, signalDirection > 0 ? "Below stop" : "Above stop", C_WARN), f_cell(2, row, "Risk", C_MUTED), f_cell(3, row, str.tostring(riskCapital, "#.##") + " " + accountCurrency, C_TEXT), row += 1
-            f_cell(0, row, "WHY", C_INFO), f_cell(1, row, bullTrigger or bearTrigger ? "Trigger aligned" : "Structure bias", C_TEXT), f_cell(2, row, abnormalVol ? "Volume confirmed" : f_dir_text(mtfSum), C_TEXT), f_cell(3, row, isForex ? str.tostring(forexStopPips, "#.1") + " pips" : nearSupport or nearResistance ? "At key level" : activeSession, C_TEXT), row += 1
-        f_cell(0, row, "RISKS", C_CRYPTO), f_cell(1, row, mtfConflict ? "MTF conflict" : excessiveVol ? "High volatility" : volCompression ? "Compression" : "—", mtfConflict or excessiveVol ? C_WARN : C_MUTED), f_cell(2, row, lowVolume ? "Low volume" : highEventRisk ? "Event risk" : volExpansion ? "Expansion" : "—", lowVolume or highEventRisk ? C_WARN : C_MUTED), f_cell(3, row, volumeQuality, C_MUTED), row += 1
-        if isCrypto and enableCrypto
+            if not beginnerMode or displayMode == "Full"
+                f_cell(0, row, isForex ? "Lots approx." : "Units", C_MUTED), f_cell(1, row, str.tostring(isForex ? forexLots : units, "#.####"), C_TEXT), f_cell(2, row, "Margin est.", C_MUTED), f_cell(3, row, str.tostring(estimatedMargin, "#.##") + " " + accountCurrency, C_TEXT), row += 1
+            f_cell(0, row, beginnerMode ? "ابطال" : "Invalidation", C_WARN), f_cell(1, row, signalDirection > 0 ? (beginnerMode ? "زیر حد ضرر" : "Below stop") : (beginnerMode ? "بالای حد ضرر" : "Above stop"), C_WARN), f_cell(2, row, beginnerMode ? "ریسک این معامله" : "Risk", C_MUTED), f_cell(3, row, str.tostring(riskCapital, "#.##") + " " + accountCurrency, C_TEXT), row += 1
+            f_cell(0, row, beginnerMode ? "دلیل" : "WHY", C_INFO), f_cell(1, row, bullTrigger or bearTrigger ? (beginnerMode ? "تریگر هماهنگ" : "Trigger aligned") : (beginnerMode ? "ساختار بازار" : "Structure bias"), C_TEXT), f_cell(2, row, abnormalVol ? (beginnerMode ? "حجم تأیید کرده" : "Volume confirmed") : f_dir_text(mtfSum), C_TEXT), f_cell(3, row, isForex ? str.tostring(forexStopPips, "#.1") + " pips" : nearSupport or nearResistance ? (beginnerMode ? "نزدیک سطح مهم" : "At key level") : activeSession, C_TEXT), row += 1
+        f_cell(0, row, beginnerMode ? "هشدارها" : "RISKS", C_CRYPTO), f_cell(1, row, mtfConflict ? (beginnerMode ? "تایم‌فریم‌ها مخالفند" : "MTF conflict") : excessiveVol ? (beginnerMode ? "نوسان خیلی زیاد" : "High volatility") : volCompression ? (beginnerMode ? "بازار فشرده" : "Compression") : "—", mtfConflict or excessiveVol ? C_WARN : C_MUTED), f_cell(2, row, lowVolume ? (beginnerMode ? "حجم کم" : "Low volume") : highEventRisk ? (beginnerMode ? "ریسک خبر" : "Event risk") : volExpansion ? (beginnerMode ? "نوسان رو به افزایش" : "Expansion") : "—", lowVolume or highEventRisk ? C_WARN : C_MUTED), f_cell(3, row, beginnerMode ? (volumeAvailable ? "حجم قابل استفاده" : "داده حجم نیست") : volumeQuality, C_MUTED), row += 1
+        if beginnerMode and compactMode and showTooltips
+            string simpleContext = isCrypto and enableCrypto ? cryptoNarrative : isForex and enableForex ? fxNarrative : enableGlobal and balancedContext ? globalNarrative : "Technical context only"
+            f_cell(0, row, "زمینه بازار", C_CRYPTO), f_cell(1, row, simpleContext, C_TEXT), f_cell(2, row, "این پیش‌بینی قطعی نیست", C_MUTED), f_cell(3, row, "مدیریت ریسک الزامی", C_WARN), row += 1
+        if isCrypto and enableCrypto and not (beginnerMode and compactMode)
             f_cell(0, row, "CRYPTO CONTEXT", C_CRYPTO), f_cell(1, row, cryptoNarrative, C_TEXT), f_cell(2, row, "BTC corr", C_MUTED), f_cell(3, row, na(btcCorrelation) ? "—" : str.tostring(btcCorrelation, "#.##"), C_TEXT), row += 1
-        if isForex and enableForex
+        if isForex and enableForex and not (beginnerMode and compactMode)
             f_cell(0, row, "FOREX CONTEXT", C_CRYPTO), f_cell(1, row, fxNarrative, C_TEXT), f_cell(2, row, "Strength Δ", C_MUTED), f_cell(3, row, str.tostring(nz(baseStrength) - nz(quoteStrength), "#.##"), C_TEXT), row += 1
-        if enableGlobal and (balancedContext or fullMacro)
+        if enableGlobal and (balancedContext or fullMacro) and not (beginnerMode and compactMode)
             f_cell(0, row, "GLOBAL", C_CRYPTO), f_cell(1, row, globalNarrative, C_TEXT), f_cell(2, row, "Weight", C_MUTED), f_cell(3, row, str.tostring(globalContextScore, "#.##"), C_TEXT), row += 1
-        f_cell(0, row, "EVENT", highEventRisk ? C_WARN : C_MUTED), f_cell(1, row, eventStatus, highEventRisk ? C_WARN : C_MUTED), f_cell(2, row, eventName + (eventForecast != "" ? " F:" + eventForecast + " P:" + eventPrevious : ""), C_TEXT), f_cell(3, row, f_post_event(eventTime) ? eventReaction + " · " + reactionState : "", C_MUTED), row += 1
+        if not (beginnerMode and compactMode) or highEventRisk
+            f_cell(0, row, "EVENT", highEventRisk ? C_WARN : C_MUTED), f_cell(1, row, eventStatus, highEventRisk ? C_WARN : C_MUTED), f_cell(2, row, eventName + (eventForecast != "" ? " F:" + eventForecast + " P:" + eventPrevious : ""), C_TEXT), f_cell(3, row, f_post_event(eventTime) ? eventReaction + " · " + reactionState : "", C_MUTED), row += 1
         if enableEconomic and fullMacro
             f_cell(0, row, "MACRO · SLOW", C_CRYPTO), f_cell(1, row, econCountry1Eff + " " + econField1 + " " + f_fmt(econ1), C_TEXT), f_cell(2, row, econCountry2Eff + " " + econField2 + " " + f_fmt(econ2), C_TEXT), f_cell(3, row, "Context only", C_MUTED), row += 1
         if isStock and enableStockFinancials and fullMacro
@@ -719,7 +767,7 @@ if barstate.islast
         f_cell(0, row, "DEBUG", C_CRYPTO), f_cell(1, row, "Requests " + str.tostring(estimatedReq) + "/40", estimatedReq <= 36 ? C_BULL : C_WARN), f_cell(2, row, marketType + " · " + styleEff, C_TEXT), f_cell(3, row, resourceProfile, C_MUTED)
 
 string readableAlert = "Quantara Vision | " + syminfo.tickerid + " | " + timeframe.period + " | " + signalState + " | " + (signalDirection > 0 ? "LONG" : signalDirection < 0 ? "SHORT" : "NONE") + " | score=" + str.tostring(activeState ? activeScore : rawScore, "#.0")
-string jsonAlert = "{\"product\":\"Quantara Vision\",\"version\":\"0.1.0\",\"symbol\":\"" + syminfo.tickerid + "\",\"timeframe\":\"" + timeframe.period + "\",\"market_type\":\"" + marketType + "\",\"state\":\"" + signalState + "\",\"direction\":\"" + (signalDirection > 0 ? "long" : signalDirection < 0 ? "short" : "none") + "\",\"score\":" + str.tostring(activeState ? activeScore : rawScore, "#.0") + ",\"entry\":" + f_fmt(entry) + ",\"stop\":" + f_fmt(stop) + ",\"tp1\":" + f_fmt(tp1) + ",\"tp2\":" + f_fmt(tp2) + ",\"tp3\":" + f_fmt(tp3) + ",\"rr\":" + str.tostring(netRR, "#.##") + ",\"event_risk\":" + (highEventRisk ? "true" : "false") + ",\"timestamp\":" + str.tostring(time_close) + "}"
+string jsonAlert = "{\"product\":\"Quantara Vision\",\"version\":\"0.2.0\",\"symbol\":\"" + syminfo.tickerid + "\",\"timeframe\":\"" + timeframe.period + "\",\"market_type\":\"" + marketType + "\",\"state\":\"" + signalState + "\",\"direction\":\"" + (signalDirection > 0 ? "long" : signalDirection < 0 ? "short" : "none") + "\",\"score\":" + str.tostring(activeState ? activeScore : rawScore, "#.0") + ",\"entry\":" + f_fmt(entry) + ",\"stop\":" + f_fmt(stop) + ",\"tp1\":" + f_fmt(tp1) + ",\"tp2\":" + f_fmt(tp2) + ",\"tp3\":" + f_fmt(tp3) + ",\"rr\":" + str.tostring(netRR, "#.##") + ",\"event_risk\":" + (highEventRisk ? "true" : "false") + ",\"timestamp\":" + str.tostring(time_close) + "}"
 if alertsEnabled and newCandidate and alertCandidates
     alert(jsonAlerts ? jsonAlert : readableAlert, confirmClose ? alert.freq_once_per_bar_close : alert.freq_once_per_bar)
 if alertsEnabled and invalidatedNow
