@@ -1,0 +1,750 @@
+//@version=6
+indicator("Quantara Vision v0.1.0", "Quantara Vision", overlay = true, max_bars_back = 1500, max_lines_count = 240, max_labels_count = 160, max_boxes_count = 80, dynamic_requests = true)
+
+// Quantara Vision is decision support, not financial advice. Confirmed signals use closed bars.
+// External headlines/order flow are intentionally unavailable in Pine; event slots are user supplied.
+
+// ───────────────────────────── Design tokens
+color C_CANVAS  = #0B0F14
+color C_PANEL   = #111821
+color C_SURFACE = #18212D
+color C_BORDER  = #263243
+color C_TEXT    = #E6EDF3
+color C_MUTED   = #8B98AA
+color C_BULL    = #2DD4BF
+color C_BEAR    = #FF6376
+color C_WARN    = #F5B942
+color C_INFO    = #5B8CFF
+color C_CRYPTO  = #A78BFA
+color C_NEUTRAL = #64748B
+
+string G01 = "1 · General"
+string G02 = "2 · Market Type"
+string G03 = "3 · Trading Style"
+string G04 = "4 · Sessions"
+string G05 = "5 · Market Structure"
+string G06 = "6 · Support / Resistance"
+string G07 = "7 · Trendlines"
+string G08 = "8 · Price Action"
+string G09 = "9 · Volume"
+string G10 = "10 · Multi-Timeframe"
+string G11 = "11 · Crypto Context"
+string G12 = "12 · Forex Context"
+string G13 = "13 · Global Indices"
+string G14 = "14 · Economic Context"
+string G15 = "15 · News / Event Risk"
+string G16 = "16 · Risk Management"
+string G17 = "17 · Signal Scoring"
+string G18 = "18 · Market Radar"
+string G19 = "19 · Colors + Visibility"
+string G20 = "20 · Alerts"
+string G21 = "21 · Performance / Request Budget"
+string G22 = "22 · Debug"
+
+string preset = input.string("Balanced", "Preset", options = ["Crypto", "Forex", "Scalping", "Intraday", "Swing", "Aggressive", "Balanced", "Conservative", "Custom"], group = G01, tooltip = "Presets are effective internal configurations. Choose Custom to use every detailed threshold.")
+string displayMode = input.string("Compact", "Display Mode", options = ["Full", "Compact", "Minimal", "Radar Focus", "Signal Focus", "Analysis Only"], group = G01)
+string panelPos = input.string("Top Right", "Panel Position", options = ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group = G01)
+bool showTooltips = input.bool(true, "Show Context Notes", group = G01)
+
+string marketOverride = input.string("Auto", "Market", options = ["Auto", "Crypto", "Forex", "Stock", "Index", "Commodity", "Futures", "Generic"], group = G02)
+string styleInput = input.string("Intraday", "Trading Style", options = ["Scalping", "Intraday", "Swing"], group = G03)
+int customPivot = input.int(5, "Custom Pivot Strength", 2, 20, group = G03)
+float customMinScore = input.float(65, "Custom Minimum Candidate Score", 0, 100, 1, group = G03)
+bool confirmClose = input.bool(true, "Confirm Signals On Bar Close", group = G03)
+
+bool showSessions = input.bool(true, "Show Sessions", group = G04)
+string asiaSession = input.session("0000-0800:1234567", "Asia", group = G04)
+string londonSession = input.session("0800-1700:1234567", "London", group = G04)
+string nySession = input.session("1330-2000:1234567", "New York", group = G04)
+string asiaZone = input.string("Asia/Singapore", "Asia IANA Time Zone", group = G04)
+string londonZone = input.string("Europe/London", "London IANA Time Zone", group = G04)
+string nyZone = input.string("America/New_York", "New York IANA Time Zone", group = G04)
+bool showPrevSession = input.bool(true, "Previous Session High / Low", group = G04)
+
+bool showStructure = input.bool(true, "Show Confirmed Structure", group = G05)
+int maxStructureLabels = input.int(24, "Maximum Recent Labels", 4, 60, group = G05)
+float breakoutAtr = input.float(0.12, "Breakout Confirmation · ATR", 0, 1, 0.01, group = G05)
+int structureExpiry = input.int(120, "Setup Expiry Bars", 10, 500, group = G05)
+
+bool showLevels = input.bool(true, "Show Levels", group = G06)
+int maxLevels = input.int(8, "Maximum Visible Levels", 2, 16, group = G06)
+float clusterAtr = input.float(0.35, "Clustering Distance · ATR", 0.05, 2, 0.05, group = G06)
+int levelLookback = input.int(300, "Level Lookback", 50, 1000, group = G06)
+
+bool showTrendlines = input.bool(true, "Confirmed Pivot Trendlines", group = G07)
+bool showChannel = input.bool(false, "Parallel Channel Approximation", group = G07)
+int emaFastLen = input.int(20, "Fast EMA", 2, 100, group = G07)
+int emaSlowLen = input.int(50, "Slow EMA", 5, 300, group = G07)
+
+bool enablePatterns = input.bool(true, "Context-Aware Patterns", group = G08)
+float rejectionWick = input.float(2.0, "Rejection Wick / Body", 1, 5, 0.1, group = G08)
+
+int volumeLen = input.int(20, "Relative Volume Length", 5, 100, group = G09)
+float abnormalVolume = input.float(1.8, "Abnormal Volume Ratio", 1, 5, 0.1, group = G09)
+int atrLen = input.int(14, "ATR Length", 5, 100, group = G09)
+bool showVwap = input.bool(true, "Show VWAP When Available", group = G09)
+
+bool enableMtf = input.bool(true, "Enable Confirmed MTF Strip", group = G10)
+string tf1 = input.timeframe("5", "TF 1", group = G10, inline = "mtf1")
+string tf2 = input.timeframe("15", "TF 2", group = G10, inline = "mtf1")
+string tf3 = input.timeframe("60", "TF 3", group = G10, inline = "mtf2")
+string tf4 = input.timeframe("240", "TF 4", group = G10, inline = "mtf2")
+string tf5 = input.timeframe("1D", "TF 5", group = G10, inline = "mtf3")
+
+bool enableCrypto = input.bool(true, "Enable Crypto Context", group = G11)
+string btcDomSymbol = input.symbol("CRYPTOCAP:BTC.D", "BTC Dominance", group = G11)
+string ethDomSymbol = input.symbol("CRYPTOCAP:ETH.D", "ETH Dominance", group = G11)
+string usdtDomSymbol = input.symbol("CRYPTOCAP:USDT.D", "USDT Dominance", group = G11)
+string totalSymbol = input.symbol("CRYPTOCAP:TOTAL", "TOTAL", group = G11)
+string total2Symbol = input.symbol("CRYPTOCAP:TOTAL2", "TOTAL2", group = G11)
+string total3Symbol = input.symbol("CRYPTOCAP:TOTAL3", "TOTAL3", group = G11)
+string btcSymbol = input.symbol("BINANCE:BTCUSDT", "Bitcoin", group = G11)
+string ethSymbol = input.symbol("BINANCE:ETHUSDT", "Ethereum", group = G11)
+int contextRocLen = input.int(20, "Context ROC Length", 5, 100, group = G11)
+
+bool enableForex = input.bool(true, "Enable Forex Context", group = G12)
+string fxPrefix = input.string("OANDA:", "Forex Data Prefix", group = G12)
+string dxySymbol = input.symbol("TVC:DXY", "DXY", group = G12)
+int fxStrengthLen = input.int(20, "Strength ROC Length", 5, 100, group = G12)
+
+bool enableGlobal = input.bool(true, "Enable Global Context", group = G13)
+string vixSymbol = input.symbol("CBOE:VIX", "VIX", group = G13)
+string us10ySymbol = input.symbol("TVC:US10Y", "US 10Y", group = G13)
+string us2ySymbol = input.symbol("TVC:US02Y", "US 2Y", group = G13)
+string spxSymbol = input.symbol("SP:SPX", "S&P 500", group = G13)
+string ndxSymbol = input.symbol("NASDAQ:NDX", "Nasdaq 100", group = G13)
+string goldSymbol = input.symbol("TVC:GOLD", "Gold", group = G13)
+string oilSymbol = input.symbol("TVC:USOIL", "Oil", group = G13)
+
+bool enableEconomic = input.bool(false, "Enable Slow-Moving Macro Data", group = G14, tooltip = "Uses Pine-native request.economic. Not an intraday trigger. Availability depends on TradingView datasets.")
+bool autoMapEconomic = input.bool(true, "Auto-Map Forex Base / Quote Regions", group = G14)
+bool enableStockFinancials = input.bool(true, "Stock Revenue / Net Income Context", group = G14)
+string econCountry1 = input.string("US", "Country / Region 1", group = G14, inline = "e1")
+string econField1 = input.string("IR", "Field 1", options = ["IR", "CPI", "GDP", "UR"], group = G14, inline = "e1")
+string econCountry2 = input.string("EU", "Country / Region 2", group = G14, inline = "e2")
+string econField2 = input.string("IR", "Field 2", options = ["IR", "CPI", "GDP", "UR"], group = G14, inline = "e2")
+
+string eventBehavior = input.string("Block Candidate", "High-Impact Behavior", options = ["Informational", "Reduce Score", "Block Candidate", "High-Risk Warning"], group = G15)
+string event1Name = input.string("", "Event 1 Name", group = G15, inline = "ev1")
+int event1Time = input.time(0, "Time", group = G15, inline = "ev1")
+string event1Market = input.string("", "Affected Market", group = G15, inline = "ev1b")
+string event1Impact = input.string("High", "Impact", options = ["Low", "Medium", "High"], group = G15, inline = "ev1b")
+string event1Forecast = input.string("", "Forecast", group = G15, inline = "ev1c")
+string event1Previous = input.string("", "Previous", group = G15, inline = "ev1c")
+string event2Name = input.string("", "Event 2 Name", group = G15, inline = "ev2")
+int event2Time = input.time(0, "Time", group = G15, inline = "ev2")
+string event2Market = input.string("", "Affected Market", group = G15, inline = "ev2b")
+string event2Impact = input.string("High", "Impact", options = ["Low", "Medium", "High"], group = G15, inline = "ev2b")
+string event2Forecast = input.string("", "Forecast", group = G15, inline = "ev2c")
+string event2Previous = input.string("", "Previous", group = G15, inline = "ev2c")
+string event3Name = input.string("", "Event 3 Name", group = G15, inline = "ev3")
+int event3Time = input.time(0, "Time", group = G15, inline = "ev3")
+string event3Market = input.string("", "Affected Market", group = G15, inline = "ev3b")
+string event3Impact = input.string("High", "Impact", options = ["Low", "Medium", "High"], group = G15, inline = "ev3b")
+string event3Forecast = input.string("", "Forecast", group = G15, inline = "ev3c")
+string event3Previous = input.string("", "Previous", group = G15, inline = "ev3c")
+int eventWarnMinutes = input.int(60, "Warning Window Before · Minutes", 0, 1440, group = G15)
+int eventCooldownMinutes = input.int(30, "Cooldown After · Minutes", 0, 1440, group = G15)
+int reactionBars = input.int(5, "Reaction Evaluation Bars", 1, 50, group = G15)
+
+float accountBalance = input.float(10000, "Account Balance", 0, group = G16)
+string accountCurrency = input.string("USD", "Account Currency", group = G16)
+string riskMode = input.string("Percentage", "Risk Mode", options = ["Percentage", "Fixed Amount"], group = G16)
+float riskPct = input.float(1, "Risk %", 0.01, 20, 0.05, group = G16)
+float fixedRisk = input.float(100, "Fixed Risk Amount", 0, group = G16)
+float feePct = input.float(0.1, "Estimated Round-Trip Fee %", 0, 10, 0.01, group = G16)
+float spreadTicks = input.float(1, "Estimated Spread · Ticks", 0, 1000, 0.1, group = G16)
+float slippageTicks = input.float(1, "Estimated Slippage · Ticks", 0, 1000, 0.1, group = G16)
+float minRR = input.float(2, "Minimum Net R:R", 0.5, 10, 0.1, group = G16)
+float maxStopAtr = input.float(3, "Maximum Stop Distance · ATR", 0.5, 10, 0.1, group = G16)
+float contractMultiplier = input.float(1, "Contract / Point Value", 0.000001, group = G16)
+float forexLotUnits = input.float(100000, "Forex Standard Lot Units", 1, group = G16)
+float pipSizeInput = input.float(0.0001, "Forex Pip Size", 0.000001, group = G16)
+float leverageCap = input.float(3, "Crypto Leverage Cap", 1, 100, 0.5, group = G16)
+float liquidationBufferPct = input.float(15, "Liquidation Buffer %", 1, 90, 1, group = G16)
+
+float contextWeight = input.float(5, "Market / Macro Maximum Weight", 0, 10, 0.5, group = G17)
+float eventPenaltyInput = input.float(15, "High Event Risk Penalty", 0, 50, 1, group = G17)
+int staleBars = input.int(40, "Stale Setup Bars", 5, 500, group = G17)
+
+bool enableRadar = input.bool(true, "Enable Configured-Symbol Radar", group = G18)
+string radarState = input.string("Compact", "State", options = ["Expanded", "Compact", "Collapsed"], group = G18)
+string radarTf = input.timeframe("60", "Radar Timeframe", group = G18)
+string r1 = input.symbol("BINANCE:BTCUSDT", "1", group = G18, inline = "r1")
+string r2 = input.symbol("BINANCE:ETHUSDT", "2", group = G18, inline = "r1")
+string r3 = input.symbol("BINANCE:SOLUSDT", "3", group = G18, inline = "r2")
+string r4 = input.symbol("BINANCE:BNBUSDT", "4", group = G18, inline = "r2")
+string r5 = input.symbol("BINANCE:XRPUSDT", "5", group = G18, inline = "r3")
+string r6 = input.symbol("BINANCE:ADAUSDT", "6", group = G18, inline = "r3")
+string r7 = input.symbol("BINANCE:DOGEUSDT", "7", group = G18, inline = "r4")
+string r8 = input.symbol("BINANCE:LINKUSDT", "8", group = G18, inline = "r4")
+string r9 = input.symbol("OANDA:EURUSD", "9", group = G18, inline = "r5")
+string r10 = input.symbol("OANDA:GBPUSD", "10", group = G18, inline = "r5")
+
+bool colorBars = input.bool(false, "Subtle Regime Bar Colors", group = G19)
+bool showRiskPlan = input.bool(true, "Show Entry / Stop / Targets", group = G19)
+bool showSessionBg = input.bool(true, "Low-Opacity Session Background", group = G19)
+
+bool alertsEnabled = input.bool(true, "Enable Runtime Alerts", group = G20)
+bool jsonAlerts = input.bool(false, "JSON Alert Messages", group = G20)
+bool alertCandidates = input.bool(true, "Candidate Alerts", group = G20)
+bool alertStructure = input.bool(true, "BOS / Retest Alerts", group = G20)
+bool alertEvents = input.bool(true, "Event Risk Alerts", group = G20)
+
+string resourceProfile = input.string("Balanced", "Resource Profile", options = ["Chart Focus", "Balanced", "Radar Focus", "Macro Focus"], group = G21, tooltip = "Chart Focus: no radar/macro. Balanced: 6 radar + reduced context. Radar Focus: 10 radar + minimal context. Macro Focus: no radar + full context/economics.")
+int requestBars = input.int(300, "External Request Bars", 100, 1000, group = G21)
+bool debug = input.bool(false, "Debug / About Panel", group = G22)
+
+f_pos(string p) => p == "Top Left" ? position.top_left : p == "Bottom Right" ? position.bottom_right : p == "Bottom Left" ? position.bottom_left : position.top_right
+f_clamp(float value, float lo, float hi) => math.max(lo, math.min(hi, value))
+f_fmt(float value) => na(value) ? "—" : str.tostring(value, format.mintick)
+f_dir_text(int direction) => direction > 0 ? "▲ BULL" : direction < 0 ? "▼ BEAR" : "◆ RANGE"
+f_dir_color(int direction) => direction > 0 ? C_BULL : direction < 0 ? C_BEAR : C_WARN
+f_tf_state(float fast, float slow, float rsi) => fast > slow and rsi > 52 ? 1 : fast < slow and rsi < 48 ? -1 : 0
+f_tf_mark(int state) => state > 0 ? "▲" : state < 0 ? "▼" : "◆"
+f_currency_strength(string c, float usd, float eur, float gbp, float jpy, float aud, float cad, float chf) => c == "USD" ? usd : c == "EUR" ? eur : c == "GBP" ? gbp : c == "JPY" ? jpy : c == "AUD" ? aud : c == "CAD" ? cad : c == "CHF" ? chf : 0.0
+f_econ_country(string currency) => currency == "USD" ? "US" : currency == "EUR" ? "EU" : currency == "GBP" ? "GB" : currency == "JPY" ? "JP" : currency == "AUD" ? "AU" : currency == "CAD" ? "CA" : currency == "CHF" ? "CH" : currency == "NZD" ? "NZ" : "US"
+f_market_matches(string affected) => affected == "" or str.contains(str.upper(affected), str.upper(syminfo.basecurrency)) or str.contains(str.upper(affected), str.upper(syminfo.currency)) or str.contains(str.upper(affected), str.upper(syminfo.ticker))
+f_in_event(int eventTime) => eventTime > 0 and time_close >= eventTime - eventWarnMinutes * 60000 and time <= eventTime + eventCooldownMinutes * 60000
+f_pre_event(int eventTime) => eventTime > 0 and timenow < eventTime and timenow >= eventTime - eventWarnMinutes * 60000
+f_post_event(int eventTime) => eventTime > 0 and timenow >= eventTime and timenow <= eventTime + eventCooldownMinutes * 60000
+f_context_tuple() => [close, close[contextRocLen] == 0 ? 0.0 : 100 * (close / close[contextRocLen] - 1), ta.ema(close, 20), ta.atr(14)]
+f_radar_tuple() => [close, ta.ema(close, 20), ta.ema(close, 50), ta.rsi(close, 14), volume, ta.sma(volume, 20), ta.atr(14)]
+
+int pivotEff = preset == "Scalping" ? 3 : preset == "Swing" ? 8 : preset == "Aggressive" ? 3 : preset == "Conservative" ? 8 : preset == "Custom" ? customPivot : 5
+float minScoreEff = preset == "Aggressive" ? 55 : preset == "Conservative" ? 75 : preset == "Scalping" ? 60 : preset == "Swing" ? 70 : preset == "Custom" ? customMinScore : 65
+string styleEff = preset == "Scalping" ? "Scalping" : preset == "Swing" ? "Swing" : styleInput
+string detectedMarket = syminfo.type == "crypto" ? "Crypto" : syminfo.type == "forex" ? "Forex" : syminfo.type == "stock" ? "Stock" : syminfo.type == "index" ? "Index" : syminfo.type == "futures" ? "Futures" : "Generic"
+string marketType = marketOverride == "Auto" ? detectedMarket : marketOverride
+bool isCrypto = marketType == "Crypto"
+bool isForex = marketType == "Forex"
+bool isStock = marketType == "Stock"
+bool signalsAllowed = displayMode != "Analysis Only"
+bool compactMode = displayMode == "Compact" or displayMode == "Minimal"
+bool showSignalPanel = displayMode != "Minimal" and displayMode != "Radar Focus" and displayMode != "Analysis Only"
+bool showRadarEff = enableRadar and displayMode != "Minimal" and displayMode != "Signal Focus" and displayMode != "Analysis Only" and resourceProfile != "Chart Focus" and resourceProfile != "Macro Focus"
+int radarLimit = resourceProfile == "Radar Focus" ? 10 : 6
+bool fullMacro = resourceProfile == "Macro Focus"
+bool balancedContext = resourceProfile == "Balanced"
+
+float atr = ta.atr(atrLen)
+float atrPct = close != 0 ? atr / close * 100 : na
+float atrPctBase = ta.sma(atrPct, 100)
+bool volExpansion = atrPct > atrPctBase * 1.25
+bool volCompression = atrPct < atrPctBase * 0.72
+bool excessiveVol = atrPct > atrPctBase * 2.0
+float emaFast = ta.ema(close, emaFastLen)
+float emaSlow = ta.ema(close, emaSlowLen)
+float vwapValue = ta.vwap(hlc3)
+bool volumeAvailable = not na(volume) and ta.sma(volume, volumeLen) > 0
+float relativeVolume = volumeAvailable ? volume / ta.sma(volume, volumeLen) : na
+bool abnormalVol = volumeAvailable and relativeVolume >= abnormalVolume
+bool lowVolume = volumeAvailable and relativeVolume < 0.65
+string volumeQuality = not volumeAvailable ? "Unavailable" : isForex ? "Tick volume · proxy" : "Exchange/feed volume"
+
+float ph = ta.pivothigh(high, pivotEff, pivotEff)
+float pl = ta.pivotlow(low, pivotEff, pivotEff)
+var float lastHigh = na
+var float prevHigh = na
+var float lastLow = na
+var float prevLow = na
+var int lastHighBar = na
+var int prevHighBar = na
+var int lastLowBar = na
+var int prevLowBar = na
+var array<label> structureLabels = array.new<label>()
+var array<float> srPrices = array.new<float>()
+var array<int> srTouches = array.new<int>()
+var array<bool> srIsSupport = array.new<bool>()
+var array<line> srLines = array.new<line>()
+
+f_add_structure(int x, float y, string txt, color clr, bool above) =>
+    if showStructure and displayMode != "Radar Focus"
+        label lb = label.new(x, y, txt, xloc = xloc.bar_index, style = above ? label.style_label_down : label.style_label_up, color = color.new(C_CANVAS, 100), textcolor = clr, size = size.tiny)
+        array.push(structureLabels, lb)
+        if array.size(structureLabels) > maxStructureLabels
+            label.delete(array.shift(structureLabels))
+
+f_add_level(float price, bool support, int originBar) =>
+    bool merged = false
+    if array.size(srPrices) > 0
+        for i = 0 to array.size(srPrices) - 1
+            if math.abs(array.get(srPrices, i) - price) <= atr * clusterAtr
+                float combined = (array.get(srPrices, i) * array.get(srTouches, i) + price) / (array.get(srTouches, i) + 1)
+                array.set(srPrices, i, combined)
+                array.set(srTouches, i, array.get(srTouches, i) + 1)
+                merged := true
+                break
+    if not merged
+        array.push(srPrices, price)
+        array.push(srTouches, 1)
+        array.push(srIsSupport, support)
+        line ln = line.new(math.max(originBar, bar_index - levelLookback), price, bar_index + 1, price, extend = extend.right, color = color.new(support ? C_BULL : C_BEAR, 38), width = 1)
+        array.push(srLines, ln)
+        if array.size(srPrices) > maxLevels
+            array.shift(srPrices)
+            array.shift(srTouches)
+            array.shift(srIsSupport)
+            line.delete(array.shift(srLines))
+
+if not na(ph)
+    prevHigh := lastHigh
+    prevHighBar := lastHighBar
+    lastHigh := ph
+    lastHighBar := bar_index - pivotEff
+    f_add_structure(lastHighBar, ph, na(prevHigh) ? "SH" : ph > prevHigh ? "HH" : "LH", ph > nz(prevHigh, ph) ? C_BULL : C_BEAR, true)
+    if showLevels
+        f_add_level(ph, false, lastHighBar)
+if not na(pl)
+    prevLow := lastLow
+    prevLowBar := lastLowBar
+    lastLow := pl
+    lastLowBar := bar_index - pivotEff
+    f_add_structure(lastLowBar, pl, na(prevLow) ? "SL" : pl > prevLow ? "HL" : "LL", pl > nz(prevLow, pl) ? C_BULL : C_BEAR, false)
+    if showLevels
+        f_add_level(pl, true, lastLowBar)
+
+if showLevels and array.size(srPrices) > 0
+    for i = 0 to array.size(srPrices) - 1
+        float lp = array.get(srPrices, i)
+        int touches = array.get(srTouches, i)
+        bool broken = array.get(srIsSupport, i) ? close < lp - atr * breakoutAtr : close > lp + atr * breakoutAtr
+        line ln = array.get(srLines, i)
+        line.set_y1(ln, lp)
+        line.set_y2(ln, lp)
+        line.set_x2(ln, bar_index + 1)
+        line.set_style(ln, broken ? line.style_dotted : touches >= 2 ? line.style_dashed : line.style_solid)
+        line.set_width(ln, touches >= 3 ? 2 : 1)
+        line.set_color(ln, color.new(array.get(srIsSupport, i) ? C_BULL : C_BEAR, broken ? 65 : touches >= 2 ? 45 : 25))
+
+bool bullStructure = not na(lastHigh) and not na(prevHigh) and not na(lastLow) and not na(prevLow) and lastHigh > prevHigh and lastLow > prevLow
+bool bearStructure = not na(lastHigh) and not na(prevHigh) and not na(lastLow) and not na(prevLow) and lastHigh < prevHigh and lastLow < prevLow
+bool bosUp = not na(lastHigh) and close > lastHigh + atr * breakoutAtr and close[1] <= lastHigh + atr * breakoutAtr
+bool bosDown = not na(lastLow) and close < lastLow - atr * breakoutAtr and close[1] >= lastLow - atr * breakoutAtr
+bool chochUp = bearStructure[1] and bosUp
+bool chochDown = bullStructure[1] and bosDown
+bool sweepHigh = not na(lastHigh) and high > lastHigh and close < lastHigh
+bool sweepLow = not na(lastLow) and low < lastLow and close > lastLow
+bool failedBreakUp = high > nz(lastHigh, high) and close < nz(lastHigh, close)
+bool failedBreakDown = low < nz(lastLow, low) and close > nz(lastLow, close)
+bool retestUp = ta.barssince(bosUp) > 0 and ta.barssince(bosUp) <= 12 and low <= nz(lastHigh, low) + atr * 0.2 and close > nz(lastHigh, close)
+bool retestDown = ta.barssince(bosDown) > 0 and ta.barssince(bosDown) <= 12 and high >= nz(lastLow, high) - atr * 0.2 and close < nz(lastLow, close)
+int structureDir = bullStructure ? 1 : bearStructure ? -1 : emaFast > emaSlow and math.abs(emaFast - emaSlow) > atr * 0.25 ? 1 : emaFast < emaSlow and math.abs(emaFast - emaSlow) > atr * 0.25 ? -1 : 0
+
+if (bosUp or bosDown or chochUp or chochDown) and showStructure
+    f_add_structure(bar_index, bosUp or chochUp ? low : high, chochUp or chochDown ? "CHoCH" : "BOS", chochUp or chochDown ? C_CRYPTO : C_INFO, not (bosUp or chochUp))
+if (sweepHigh or sweepLow) and showStructure
+    f_add_structure(bar_index, sweepHigh ? high : low, "LIQ SWEEP", C_WARN, sweepHigh)
+
+var line upTrend = na
+var line downTrend = na
+var line channelLine = na
+if showTrendlines and not na(pl) and not na(prevLowBar) and lastLowBar > prevLowBar
+    line.delete(upTrend)
+    upTrend := line.new(prevLowBar, prevLow, lastLowBar, lastLow, extend = extend.right, color = color.new(C_MUTED, 30), style = line.style_dashed)
+    if showChannel and not na(prevHigh)
+        line.delete(channelLine)
+        channelLine := line.new(prevLowBar, prevHigh, lastLowBar, prevHigh + (lastLow - prevLow), extend = extend.right, color = color.new(C_MUTED, 55), style = line.style_dashed)
+if showTrendlines and not na(ph) and not na(prevHighBar) and lastHighBar > prevHighBar
+    line.delete(downTrend)
+    downTrend := line.new(prevHighBar, prevHigh, lastHighBar, lastHigh, extend = extend.right, color = color.new(C_MUTED, 30), style = line.style_dashed)
+    if showChannel and not na(prevLow)
+        line.delete(channelLine)
+        channelLine := line.new(prevHighBar, prevLow, lastHighBar, prevLow + (lastHigh - prevHigh), extend = extend.right, color = color.new(C_MUTED, 55), style = line.style_dashed)
+float upTrendNow = not na(upTrend) ? line.get_price(upTrend, bar_index) : na
+float downTrendNow = not na(downTrend) ? line.get_price(downTrend, bar_index) : na
+bool trendBreakDown = not na(upTrendNow) and close < upTrendNow and close[1] >= nz(upTrendNow[1], upTrendNow)
+bool trendBreakUp = not na(downTrendNow) and close > downTrendNow and close[1] <= nz(downTrendNow[1], downTrendNow)
+
+bool asiaActive = not na(time(timeframe.period, asiaSession, asiaZone))
+bool londonActive = not na(time(timeframe.period, londonSession, londonZone))
+bool nyActive = not na(time(timeframe.period, nySession, nyZone))
+bool overlapActive = londonActive and nyActive
+string activeSession = overlapActive ? "LON/NY" : nyActive ? "New York" : londonActive ? "London" : asiaActive ? "Asia" : "Transition"
+var float asiaHigh = na
+var float asiaLow = na
+var float prevAsiaHigh = na
+var float prevAsiaLow = na
+bool asiaStart = asiaActive and not asiaActive[1]
+bool asiaEnd = not asiaActive and asiaActive[1]
+if asiaStart
+    asiaHigh := high
+    asiaLow := low
+if asiaActive
+    asiaHigh := math.max(nz(asiaHigh, high), high)
+    asiaLow := math.min(nz(asiaLow, low), low)
+if asiaEnd
+    prevAsiaHigh := asiaHigh
+    prevAsiaLow := asiaLow
+bool londonAsiaBreakUp = londonActive and not na(prevAsiaHigh) and close > prevAsiaHigh and close[1] <= prevAsiaHigh
+bool londonAsiaBreakDown = londonActive and not na(prevAsiaLow) and close < prevAsiaLow and close[1] >= prevAsiaLow
+bool lowLiquidity = not asiaActive and not londonActive and not nyActive
+bgcolor(showSessions and showSessionBg ? overlapActive ? color.new(C_CRYPTO, 92) : londonActive ? color.new(C_INFO, 94) : nyActive ? color.new(C_WARN, 95) : asiaActive ? color.new(C_CRYPTO, 95) : na : na)
+plot(showPrevSession ? prevAsiaHigh : na, "Previous Asia High", color.new(C_CRYPTO, 40), 1, plot.style_linebr)
+plot(showPrevSession ? prevAsiaLow : na, "Previous Asia Low", color.new(C_CRYPTO, 40), 1, plot.style_linebr)
+
+float body = math.max(math.abs(close - open), syminfo.mintick)
+float upperWick = high - math.max(open, close)
+float lowerWick = math.min(open, close) - low
+bool bullEngulf = close > open and close >= open[1] and open <= close[1] and close[1] < open[1]
+bool bearEngulf = close < open and close <= open[1] and open >= close[1] and close[1] > open[1]
+bool bullReject = lowerWick >= body * rejectionWick and close > open
+bool bearReject = upperWick >= body * rejectionWick and close < open
+bool insideBar = high < high[1] and low > low[1]
+bool expansionCandle = high - low > atr * 1.4
+bool nearSupport = not na(lastLow) and math.abs(close - lastLow) <= atr * 0.65
+bool nearResistance = not na(lastHigh) and math.abs(close - lastHigh) <= atr * 0.65
+bool bullTrigger = enablePatterns and (retestUp or londonAsiaBreakUp or trendBreakUp or insideBar[1] and expansionCandle and close > high[1] or (bullEngulf or bullReject) and (nearSupport or bullStructure or londonActive))
+bool bearTrigger = enablePatterns and (retestDown or londonAsiaBreakDown or trendBreakDown or insideBar[1] and expansionCandle and close < low[1] or (bearEngulf or bearReject) and (nearResistance or bearStructure or londonActive))
+
+// Confirmed higher-timeframe values: one-bar offset with lookahead_on prevents future leakage.
+[m1f, m1s, m1r] = request.security(syminfo.tickerid, tf1, [ta.ema(close, 20)[1], ta.ema(close, 50)[1], ta.rsi(close, 14)[1]], lookahead = barmerge.lookahead_on, calc_bars_count = requestBars)
+[m2f, m2s, m2r] = request.security(syminfo.tickerid, tf2, [ta.ema(close, 20)[1], ta.ema(close, 50)[1], ta.rsi(close, 14)[1]], lookahead = barmerge.lookahead_on, calc_bars_count = requestBars)
+[m3f, m3s, m3r] = request.security(syminfo.tickerid, tf3, [ta.ema(close, 20)[1], ta.ema(close, 50)[1], ta.rsi(close, 14)[1]], lookahead = barmerge.lookahead_on, calc_bars_count = requestBars)
+[m4f, m4s, m4r] = request.security(syminfo.tickerid, tf4, [ta.ema(close, 20)[1], ta.ema(close, 50)[1], ta.rsi(close, 14)[1]], lookahead = barmerge.lookahead_on, calc_bars_count = requestBars)
+[m5f, m5s, m5r] = request.security(syminfo.tickerid, tf5, [ta.ema(close, 20)[1], ta.ema(close, 50)[1], ta.rsi(close, 14)[1]], lookahead = barmerge.lookahead_on, calc_bars_count = requestBars)
+int mtf1 = enableMtf ? f_tf_state(m1f, m1s, m1r) : 0
+int mtf2 = enableMtf ? f_tf_state(m2f, m2s, m2r) : 0
+int mtf3 = enableMtf ? f_tf_state(m3f, m3s, m3r) : 0
+int mtf4 = enableMtf ? f_tf_state(m4f, m4s, m4r) : 0
+int mtf5 = enableMtf ? f_tf_state(m5f, m5s, m5r) : 0
+int mtfSum = mtf1 + mtf2 + mtf3 + mtf4 + mtf5
+bool mtfConflict = math.abs(mtfSum) <= 1
+
+float cryptoContextScore = 0
+string cryptoNarrative = "Unavailable"
+float btcCorrelation = na
+if isCrypto and enableCrypto and resourceProfile != "Chart Focus"
+    [btcDc, btcDr, btcDe, btcDa] = request.security(btcDomSymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    [usdtDc, usdtDr, usdtDe, usdtDa] = request.security(usdtDomSymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    [total2c, total2r, total2e, total2a] = request.security(total2Symbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    [btcc, btcr, btce, btca] = request.security(btcSymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    float total3r = na
+    if fullMacro
+        [total3c_, total3r_, total3e_, total3a_] = request.security(total3Symbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+        [totalc_, totalr_, totale_, totala_] = request.security(totalSymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+        [ethdc_, ethdr_, ethde_, ethda_] = request.security(ethDomSymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+        [ethc_, ethr_, ethe_, etha_] = request.security(ethSymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+        total3r := total3r_
+    cryptoContextScore := f_clamp((nz(total2r) > 0 ? 1.5 : -1.5) + (nz(usdtDr) < 0 ? 1.5 : -1.5) + (nz(btcr) > 0 ? 1 : -1), -contextWeight, contextWeight)
+    cryptoNarrative := nz(usdtDr) > 0 and nz(total2r) < 0 ? "Altcoins under pressure" : nz(total2r) > nz(btcr) and nz(btcDr) < 0 ? "Possible altcoin rotation" : nz(btcr) > 0 and nz(btcDr) > 0 ? "BTC leadership" : nz(usdtDr) < 0 and nz(total2r) > 0 ? "Risk returning to crypto" : "Crypto context conflicted"
+    btcCorrelation := ta.correlation(close, btcc, 50)
+
+float fxContextScore = 0
+string fxNarrative = "Unavailable"
+float baseStrength = na
+float quoteStrength = na
+if isForex and enableForex and resourceProfile != "Chart Focus"
+    string b = syminfo.basecurrency
+    string q = syminfo.currency
+    [eurusd, eurusdR, euE, euA] = request.security(fxPrefix + "EURUSD", timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    [gbpusd, gbpusdR, guE, guA] = request.security(fxPrefix + "GBPUSD", timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    [usdjpy, usdjpyR, ujE, ujA] = request.security(fxPrefix + "USDJPY", timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    [audusd, audusdR, auE, auA] = request.security(fxPrefix + "AUDUSD", timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    [usdcad, usdcadR, ucE, ucA] = request.security(fxPrefix + "USDCAD", timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    [usdchf, usdchfR, ufE, ufA] = request.security(fxPrefix + "USDCHF", timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    float usd = (-nz(eurusdR) - nz(gbpusdR) + nz(usdjpyR) - nz(audusdR) + nz(usdcadR) + nz(usdchfR)) / 6
+    baseStrength := f_currency_strength(b, usd, nz(eurusdR), nz(gbpusdR), -nz(usdjpyR), nz(audusdR), -nz(usdcadR), -nz(usdchfR))
+    quoteStrength := f_currency_strength(q, usd, nz(eurusdR), nz(gbpusdR), -nz(usdjpyR), nz(audusdR), -nz(usdcadR), -nz(usdchfR))
+    fxContextScore := f_clamp((baseStrength - quoteStrength) / 2, -contextWeight, contextWeight)
+    fxNarrative := b + " " + (baseStrength > quoteStrength ? "stronger" : "weaker") + " than " + q
+
+float globalContextScore = 0
+string globalNarrative = "Reduced by profile"
+if enableGlobal and (balancedContext or fullMacro)
+    [vixc, vixr, vixe, vixa] = request.security(vixSymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    [dxyc, dxyr, dxye, dxya] = request.security(dxySymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    [spxc, spxr, spxe, spxa] = request.security(spxSymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    float y10r = na
+    float y2r = na
+    float goldr = na
+    if fullMacro
+        [y10c_, y10r_, y10e_, y10a_] = request.security(us10ySymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+        [y2c_, y2r_, y2e_, y2a_] = request.security(us2ySymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+        [goldc_, goldr_, golde_, golda_] = request.security(goldSymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+        [ndxc_, ndxr_, ndxe_, ndxa_] = request.security(ndxSymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+        [oilc_, oilr_, oile_, oila_] = request.security(oilSymbol, timeframe.period, f_context_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+        y10r := y10r_
+        y2r := y2r_
+        goldr := goldr_
+    globalContextScore := f_clamp((nz(spxr) > 0 ? 2 : -2) + (nz(vixr) < 0 ? 1.5 : -1.5) + (nz(dxyr) < 0 ? 0.5 : -0.5), -contextWeight, contextWeight)
+    globalNarrative := nz(vixr) > 0 and nz(spxr) < 0 ? "Risk-off · equity pressure" : nz(vixr) < 0 and nz(spxr) > 0 ? "Risk-on · volatility easing" : nz(dxyr) > 0 ? "USD strength · mixed risk" : "Intermarket conflicted"
+
+float econ1 = na
+float econ2 = na
+float stockRevenue = na
+float stockNetIncome = na
+string econCountry1Eff = autoMapEconomic and isForex ? f_econ_country(syminfo.basecurrency) : econCountry1
+string econCountry2Eff = autoMapEconomic and isForex ? f_econ_country(syminfo.currency) : econCountry2
+if enableEconomic and fullMacro
+    econ1 := request.economic(econCountry1Eff, econField1, gaps = barmerge.gaps_off, ignore_invalid_symbol = true)
+    econ2 := request.economic(econCountry2Eff, econField2, gaps = barmerge.gaps_off, ignore_invalid_symbol = true)
+if isStock and enableStockFinancials and fullMacro
+    stockRevenue := request.financial(syminfo.tickerid, "TOTAL_REVENUE", "FQ", gaps = barmerge.gaps_off, ignore_invalid_symbol = true)
+    stockNetIncome := request.financial(syminfo.tickerid, "NET_INCOME", "FQ", gaps = barmerge.gaps_off, ignore_invalid_symbol = true)
+
+bool event1Active = f_in_event(event1Time) and f_market_matches(event1Market)
+bool event2Active = f_in_event(event2Time) and f_market_matches(event2Market)
+bool event3Active = f_in_event(event3Time) and f_market_matches(event3Market)
+bool highEventRisk = event1Active and event1Impact == "High" or event2Active and event2Impact == "High" or event3Active and event3Impact == "High"
+bool anyEventConfigured = event1Time > 0 or event2Time > 0 or event3Time > 0
+string eventName = event1Active ? event1Name : event2Active ? event2Name : event3Active ? event3Name : ""
+int eventTime = event1Active ? event1Time : event2Active ? event2Time : event3Active ? event3Time : 0
+string eventForecast = event1Active ? event1Forecast : event2Active ? event2Forecast : event3Active ? event3Forecast : ""
+string eventPrevious = event1Active ? event1Previous : event2Active ? event2Previous : event3Active ? event3Previous : ""
+string eventStatus = not anyEventConfigured ? "NO MANUAL EVENT CONFIGURED" : highEventRisk and timenow < eventTime ? "HIGH IMPACT IN " + str.tostring(math.max(0, math.round((eventTime - timenow) / 60000))) + "m" : highEventRisk and timenow >= eventTime ? "POST-EVENT VOLATILITY" : event1Active or event2Active or event3Active ? "EVENT RISK ACTIVE" : "NO ACTIVE EVENT WINDOW"
+float eventMoveAtr = eventTime > 0 and time >= eventTime ? (close - ta.valuewhen(time[1] < eventTime and time >= eventTime, open, 0)) / atr : na
+string eventReaction = na(eventMoveAtr) ? "Observed reaction pending" : math.abs(eventMoveAtr) < 0.5 ? "Muted observed reaction" : eventMoveAtr > 0 ? "Observed move up · " + str.tostring(eventMoveAtr, "#.##") + " ATR" : "Observed move down · " + str.tostring(math.abs(eventMoveAtr), "#.##") + " ATR"
+int eventBarsSince = eventTime > 0 ? ta.barssince(time[1] < eventTime and time >= eventTime) : na
+string reactionState = not na(eventBarsSince) and eventBarsSince >= reactionBars ? math.sign(close - nz(ta.valuewhen(time[1] < eventTime and time >= eventTime, close, 0), close)) == math.sign(nz(eventMoveAtr)) ? "continued" : "faded" : "developing"
+
+float longScore = 0
+float shortScore = 0
+longScore += bullStructure ? 20 : structureDir > 0 ? 12 : bosUp ? 14 : 2
+shortScore += bearStructure ? 20 : structureDir < 0 ? 12 : bosDown ? 14 : 2
+longScore += nearSupport ? 15 : close > emaSlow ? 7 : 2
+shortScore += nearResistance ? 15 : close < emaSlow ? 7 : 2
+longScore += emaFast > emaSlow ? 10 : 0
+shortScore += emaFast < emaSlow ? 10 : 0
+longScore += bullTrigger ? 15 : 0
+shortScore += bearTrigger ? 15 : 0
+longScore += abnormalVol ? 10 : volumeAvailable and relativeVolume >= 1 ? 6 : not volumeAvailable ? 3 : 1
+shortScore += abnormalVol ? 10 : volumeAvailable and relativeVolume >= 1 ? 6 : not volumeAvailable ? 3 : 1
+longScore += mtfSum >= 3 ? 15 : mtfSum >= 1 ? 8 : 0
+shortScore += mtfSum <= -3 ? 15 : mtfSum <= -1 ? 8 : 0
+longScore += londonActive or nyActive ? 5 : overlapActive ? 5 : 1
+shortScore += londonActive or nyActive ? 5 : overlapActive ? 5 : 1
+float directionalContext = isCrypto ? cryptoContextScore : isForex ? fxContextScore : globalContextScore
+longScore += math.max(0, directionalContext)
+shortScore += math.max(0, -directionalContext)
+longScore += 5
+shortScore += 5
+if lowVolume
+    longScore -= 7
+    shortScore -= 7
+if mtfConflict
+    longScore -= 8
+    shortScore -= 8
+if excessiveVol
+    longScore -= 8
+    shortScore -= 8
+if highEventRisk and eventBehavior == "Reduce Score"
+    longScore -= eventPenaltyInput
+    shortScore -= eventPenaltyInput
+longScore := f_clamp(longScore, 0, 100)
+shortScore := f_clamp(shortScore, 0, 100)
+
+int rawDirection = longScore > shortScore + 7 ? 1 : shortScore > longScore + 7 ? -1 : 0
+float rawScore = rawDirection > 0 ? longScore : rawDirection < 0 ? shortScore : math.max(longScore, shortScore)
+bool barConfirmed = not confirmClose or barstate.isconfirmed
+bool blockedByEvent = highEventRisk and eventBehavior == "Block Candidate"
+bool candidate = signalsAllowed and barConfirmed and rawDirection != 0 and rawScore >= minScoreEff and not blockedByEvent
+bool earlyWatch = signalsAllowed and rawDirection != 0 and rawScore >= minScoreEff - 10 and not candidate
+
+var string signalState = "None"
+var int signalDirection = 0
+var float entry = na
+var float stop = na
+var float tp1 = na
+var float tp2 = na
+var float tp3 = na
+var float activeScore = na
+var int activatedBar = na
+var bool tp1Hit = false
+var bool tp2Hit = false
+var bool tp3Hit = false
+bool newCandidate = false
+bool invalidatedNow = false
+bool stoppedNow = false
+bool target1Now = false
+bool target2Now = false
+bool target3Now = false
+
+bool activeState = signalState == "Candidate" or signalState == "Confirmed" or signalState == "Active Plan"
+if activeState
+    invalidatedNow := signalDirection > 0 ? low <= stop : high >= stop
+    stoppedNow := invalidatedNow
+    target1Now := not tp1Hit and (signalDirection > 0 ? high >= tp1 : low <= tp1)
+    target2Now := not tp2Hit and (signalDirection > 0 ? high >= tp2 : low <= tp2)
+    target3Now := not tp3Hit and (signalDirection > 0 ? high >= tp3 : low <= tp3)
+    tp1Hit := tp1Hit or target1Now
+    tp2Hit := tp2Hit or target2Now
+    tp3Hit := tp3Hit or target3Now
+    if invalidatedNow
+        signalState := "Invalidated"
+    else if target3Now
+        signalState := "Target Reached"
+    else if bar_index - activatedBar > structureExpiry
+        signalState := "Expired"
+    else
+        signalState := "Active Plan"
+else if candidate and (signalState == "None" or signalState == "Early Watch" or signalState == "High Risk" or signalState == "Expired" or signalState == "Invalidated" or signalState == "Target Reached")
+    signalState := "Candidate"
+    signalDirection := rawDirection
+    entry := close
+    float structuralStop = rawDirection > 0 ? nz(lastLow, low) - atr * 0.2 : nz(lastHigh, high) + atr * 0.2
+    float cappedDistance = math.min(math.abs(entry - structuralStop), atr * maxStopAtr)
+    stop := rawDirection > 0 ? entry - cappedDistance : entry + cappedDistance
+    tp1 := rawDirection > 0 ? entry + cappedDistance * 1.5 : entry - cappedDistance * 1.5
+    tp2 := rawDirection > 0 ? entry + cappedDistance * 2.5 : entry - cappedDistance * 2.5
+    tp3 := rawDirection > 0 ? entry + cappedDistance * 3.5 : entry - cappedDistance * 3.5
+    activeScore := rawScore
+    activatedBar := bar_index
+    tp1Hit := false
+    tp2Hit := false
+    tp3Hit := false
+    newCandidate := true
+else if earlyWatch and not activeState
+    signalState := "Early Watch"
+else if not activeState and not earlyWatch and signalState != "Invalidated" and signalState != "Target Reached"
+    signalState := highEventRisk and eventBehavior == "High-Risk Warning" ? "High Risk" : "None"
+
+float stopDistance = math.abs(entry - stop)
+float costPerUnit = entry * feePct / 100 + (spreadTicks + slippageTicks) * syminfo.mintick
+float riskCapital = riskMode == "Percentage" ? accountBalance * riskPct / 100 : fixedRisk
+float netRiskPerUnit = stopDistance * contractMultiplier + costPerUnit
+float units = netRiskPerUnit > 0 ? riskCapital / netRiskPerUnit : na
+float notional = units * entry * contractMultiplier
+float suggestedLeverage = isCrypto ? math.min(leverageCap, 100 / liquidationBufferPct) : 1
+float estimatedMargin = isCrypto ? notional / suggestedLeverage : notional
+float netRR = stopDistance > 0 ? (math.abs(tp2 - entry) * contractMultiplier - costPerUnit) / netRiskPerUnit : na
+float forexLots = isForex and forexLotUnits > 0 ? units / forexLotUnits : na
+float forexStopPips = isForex and pipSizeInput > 0 ? stopDistance / pipSizeInput : na
+bool weakEconomics = not na(netRR) and netRR < minRR
+
+var line entryLine = na
+var line stopLine = na
+var line tp1Line = na
+var line tp2Line = na
+var line tp3Line = na
+var box riskBox = na
+var box rewardBox = na
+if newCandidate and showRiskPlan and displayMode != "Radar Focus"
+    line.delete(entryLine), line.delete(stopLine), line.delete(tp1Line), line.delete(tp2Line), line.delete(tp3Line)
+    box.delete(riskBox), box.delete(rewardBox)
+    entryLine := line.new(bar_index, entry, bar_index + 25, entry, color = C_INFO, extend = extend.none)
+    stopLine := line.new(bar_index, stop, bar_index + 25, stop, color = C_BEAR, width = 2)
+    tp1Line := line.new(bar_index, tp1, bar_index + 25, tp1, color = C_BULL)
+    tp2Line := line.new(bar_index, tp2, bar_index + 25, tp2, color = C_BULL)
+    tp3Line := line.new(bar_index, tp3, bar_index + 25, tp3, color = C_BULL, style = line.style_dashed)
+    riskBox := box.new(bar_index, math.max(entry, stop), bar_index + 25, math.min(entry, stop), bgcolor = color.new(C_BEAR, 93), border_color = color.new(C_BEAR, 65))
+    rewardBox := box.new(bar_index, math.max(entry, tp3), bar_index + 25, math.min(entry, tp3), bgcolor = color.new(C_BULL, 93), border_color = color.new(C_BULL, 65))
+if activeState and showRiskPlan
+    line.set_x2(entryLine, bar_index + 1), line.set_x2(stopLine, bar_index + 1), line.set_x2(tp1Line, bar_index + 1), line.set_x2(tp2Line, bar_index + 1), line.set_x2(tp3Line, bar_index + 1)
+    box.set_right(riskBox, bar_index + 1), box.set_right(rewardBox, bar_index + 1)
+if invalidatedNow
+    line.set_color(entryLine, color.new(C_INFO, 70)), line.set_color(stopLine, color.new(C_BEAR, 70)), line.set_color(tp1Line, color.new(C_BULL, 75)), line.set_color(tp2Line, color.new(C_BULL, 75)), line.set_color(tp3Line, color.new(C_BULL, 80))
+
+plot(showVwap and volumeAvailable ? vwapValue : na, "VWAP", C_CRYPTO, 1)
+plot(emaFast, "Fast EMA", color.new(C_INFO, 45), 1)
+plot(emaSlow, "Slow EMA", color.new(C_NEUTRAL, 45), 1)
+barcolor(colorBars ? color.new(f_dir_color(structureDir), 65) : na)
+
+f_radar_score(string symbol) =>
+    [rc, rf, rs, rr, rv, rva, ra] = request.security(symbol, radarTf, f_radar_tuple(), ignore_invalid_symbol = true, calc_bars_count = requestBars)
+    int rd = na(rc) ? 0 : rf > rs and rr > 52 ? 1 : rf < rs and rr < 48 ? -1 : 0
+    float rvol = not na(rv) and rva > 0 ? rv / rva : na
+    float score = na(rc) ? na : f_clamp(45 + math.abs(rr - 50) * 1.2 + (not na(rvol) and rvol > 1.2 ? 10 : 0) + (rd != 0 ? 10 : 0), 0, 100)
+    [score, rd, rvol, rc, ra]
+
+var array<string> radarSymbols = array.from(r1, r2, r3, r4, r5, r6, r7, r8, r9, r10)
+var array<float> radarScores = array.new_float(10, na)
+var array<int> radarDirs = array.new_int(10, 0)
+var array<float> radarVols = array.new_float(10, na)
+if showRadarEff
+    for i = 0 to radarLimit - 1
+        [rs_, rd_, rv_, rc_, ra_] = f_radar_score(array.get(radarSymbols, i))
+        array.set(radarScores, i, rs_)
+        array.set(radarDirs, i, rd_)
+        array.set(radarVols, i, rv_)
+
+var table panel = table.new(f_pos(panelPos), 4, 22, bgcolor = color.new(C_PANEL, 4), frame_color = C_BORDER, frame_width = 1, border_color = C_BORDER)
+f_cell(int c, int r, string txt, color txtColor = C_TEXT, color bg = C_PANEL, string align = text.align_left) => table.cell(panel, c, r, txt, text_color = txtColor, bgcolor = bg, text_size = size.small, text_halign = align)
+if barstate.islast
+    table.clear(panel, 0, 0, 3, 21)
+    int row = 0
+    if showSignalPanel
+        color stateColor = signalState == "Invalidated" ? C_MUTED : signalDirection > 0 ? C_BULL : signalDirection < 0 ? C_BEAR : signalState == "High Risk" ? C_WARN : C_NEUTRAL
+        string stateText = signalState == "Candidate" or signalState == "Active Plan" ? (signalDirection > 0 ? "▲ LONG CANDIDATE" : "▼ SHORT CANDIDATE") : signalState == "Early Watch" ? "◆ EARLY WATCH" : signalState == "Invalidated" ? "× INVALIDATED" : signalState == "High Risk" ? "⚠ HIGH RISK" : signalState == "Target Reached" ? "TP3 · TARGET REACHED" : "— NO TRADE"
+        f_cell(0, row, "QUANTARA VISION", C_CRYPTO), f_cell(1, row, "v0.1.0", C_MUTED), f_cell(2, row, syminfo.ticker, C_TEXT), f_cell(3, row, timeframe.period, C_MUTED), row += 1
+        f_cell(0, row, stateText, stateColor), f_cell(1, row, "", stateColor), f_cell(2, row, "SCORE", C_MUTED), f_cell(3, row, str.tostring(math.round(activeState ? activeScore : rawScore)) + "/100", stateColor, C_PANEL, text.align_right), row += 1
+        f_cell(0, row, "Regime", C_MUTED), f_cell(1, row, f_dir_text(structureDir), f_dir_color(structureDir)), f_cell(2, row, "Session", C_MUTED), f_cell(3, row, activeSession, C_INFO), row += 1
+        f_cell(0, row, tf1 + " " + f_tf_mark(mtf1), f_dir_color(mtf1)), f_cell(1, row, tf2 + " " + f_tf_mark(mtf2), f_dir_color(mtf2)), f_cell(2, row, tf3 + " " + f_tf_mark(mtf3), f_dir_color(mtf3)), f_cell(3, row, tf4 + " " + f_tf_mark(mtf4), f_dir_color(mtf4)), row += 1
+        if activeState or signalState == "Invalidated" or signalState == "Target Reached"
+            f_cell(0, row, "Entry", C_MUTED), f_cell(1, row, f_fmt(entry), C_INFO), f_cell(2, row, "Stop", C_MUTED), f_cell(3, row, f_fmt(stop), C_BEAR), row += 1
+            f_cell(0, row, "TP1", C_MUTED), f_cell(1, row, f_fmt(tp1), C_BULL), f_cell(2, row, "TP2", C_MUTED), f_cell(3, row, f_fmt(tp2), C_BULL), row += 1
+            f_cell(0, row, "TP3", C_MUTED), f_cell(1, row, f_fmt(tp3), C_BULL), f_cell(2, row, "Net R:R", C_MUTED), f_cell(3, row, na(netRR) ? "—" : "1:" + str.tostring(netRR, "#.##"), weakEconomics ? C_WARN : C_BULL), row += 1
+            f_cell(0, row, isForex ? "Lots approx." : "Units", C_MUTED), f_cell(1, row, str.tostring(isForex ? forexLots : units, "#.####"), C_TEXT), f_cell(2, row, "Margin est.", C_MUTED), f_cell(3, row, str.tostring(estimatedMargin, "#.##") + " " + accountCurrency, C_TEXT), row += 1
+            f_cell(0, row, "Invalidation", C_WARN), f_cell(1, row, signalDirection > 0 ? "Below stop" : "Above stop", C_WARN), f_cell(2, row, "Risk", C_MUTED), f_cell(3, row, str.tostring(riskCapital, "#.##") + " " + accountCurrency, C_TEXT), row += 1
+            f_cell(0, row, "WHY", C_INFO), f_cell(1, row, bullTrigger or bearTrigger ? "Trigger aligned" : "Structure bias", C_TEXT), f_cell(2, row, abnormalVol ? "Volume confirmed" : f_dir_text(mtfSum), C_TEXT), f_cell(3, row, isForex ? str.tostring(forexStopPips, "#.1") + " pips" : nearSupport or nearResistance ? "At key level" : activeSession, C_TEXT), row += 1
+        f_cell(0, row, "RISKS", C_CRYPTO), f_cell(1, row, mtfConflict ? "MTF conflict" : excessiveVol ? "High volatility" : volCompression ? "Compression" : "—", mtfConflict or excessiveVol ? C_WARN : C_MUTED), f_cell(2, row, lowVolume ? "Low volume" : highEventRisk ? "Event risk" : volExpansion ? "Expansion" : "—", lowVolume or highEventRisk ? C_WARN : C_MUTED), f_cell(3, row, volumeQuality, C_MUTED), row += 1
+        if isCrypto and enableCrypto
+            f_cell(0, row, "CRYPTO CONTEXT", C_CRYPTO), f_cell(1, row, cryptoNarrative, C_TEXT), f_cell(2, row, "BTC corr", C_MUTED), f_cell(3, row, na(btcCorrelation) ? "—" : str.tostring(btcCorrelation, "#.##"), C_TEXT), row += 1
+        if isForex and enableForex
+            f_cell(0, row, "FOREX CONTEXT", C_CRYPTO), f_cell(1, row, fxNarrative, C_TEXT), f_cell(2, row, "Strength Δ", C_MUTED), f_cell(3, row, str.tostring(nz(baseStrength) - nz(quoteStrength), "#.##"), C_TEXT), row += 1
+        if enableGlobal and (balancedContext or fullMacro)
+            f_cell(0, row, "GLOBAL", C_CRYPTO), f_cell(1, row, globalNarrative, C_TEXT), f_cell(2, row, "Weight", C_MUTED), f_cell(3, row, str.tostring(globalContextScore, "#.##"), C_TEXT), row += 1
+        f_cell(0, row, "EVENT", highEventRisk ? C_WARN : C_MUTED), f_cell(1, row, eventStatus, highEventRisk ? C_WARN : C_MUTED), f_cell(2, row, eventName + (eventForecast != "" ? " F:" + eventForecast + " P:" + eventPrevious : ""), C_TEXT), f_cell(3, row, f_post_event(eventTime) ? eventReaction + " · " + reactionState : "", C_MUTED), row += 1
+        if enableEconomic and fullMacro
+            f_cell(0, row, "MACRO · SLOW", C_CRYPTO), f_cell(1, row, econCountry1Eff + " " + econField1 + " " + f_fmt(econ1), C_TEXT), f_cell(2, row, econCountry2Eff + " " + econField2 + " " + f_fmt(econ2), C_TEXT), f_cell(3, row, "Context only", C_MUTED), row += 1
+        if isStock and enableStockFinancials and fullMacro
+            f_cell(0, row, "STOCK · FQ", C_CRYPTO), f_cell(1, row, "Revenue " + f_fmt(stockRevenue), C_TEXT), f_cell(2, row, "Net income " + f_fmt(stockNetIncome), C_TEXT), f_cell(3, row, "Not scored", C_MUTED), row += 1
+    if showRadarEff
+        f_cell(0, row, "QUANTARA RADAR", C_CRYPTO), f_cell(1, row, radarState, C_MUTED), f_cell(2, row, str.tostring(radarLimit) + " symbols", C_MUTED), f_cell(3, row, radarTf, C_INFO), row += 1
+        if radarState == "Collapsed"
+            int longs = 0
+            int shorts = 0
+            for i = 0 to radarLimit - 1
+                longs += array.get(radarDirs, i) > 0 ? 1 : 0
+                shorts += array.get(radarDirs, i) < 0 ? 1 : 0
+            f_cell(0, row, str.tostring(longs) + " LONG", C_BULL), f_cell(1, row, str.tostring(shorts) + " SHORT", C_BEAR), f_cell(2, row, str.tostring(radarLimit - longs - shorts) + " WAIT", C_WARN), f_cell(3, row, "Configured only", C_MUTED), row += 1
+        else
+            f_cell(0, row, "SYMBOL", C_MUTED, C_SURFACE), f_cell(1, row, "BIAS", C_MUTED, C_SURFACE), f_cell(2, row, "SCORE", C_MUTED, C_SURFACE), f_cell(3, row, "WARN", C_MUTED, C_SURFACE), row += 1
+            int requestedRows = radarState == "Expanded" ? radarLimit : math.min(6, radarLimit)
+            int rowsToShow = math.min(requestedRows, 22 - row)
+            for i = 0 to rowsToShow - 1
+                float rs = array.get(radarScores, i)
+                int rd = array.get(radarDirs, i)
+                float rv = array.get(radarVols, i)
+                string symbolText = array.get(radarSymbols, i)
+                string shortSymbol = str.contains(symbolText, ":") ? array.get(str.split(symbolText, ":"), 1) : symbolText
+                f_cell(0, row, shortSymbol, C_TEXT), f_cell(1, row, f_tf_mark(rd) + (rd > 0 ? " LONG" : rd < 0 ? " SHORT" : " WAIT"), f_dir_color(rd)), f_cell(2, row, na(rs) ? "—" : str.tostring(math.round(rs)), C_TEXT), f_cell(3, row, na(rs) ? "DATA" : not na(rv) and rv < 0.65 ? "LOW VOL" : "—", na(rs) or not na(rv) and rv < 0.65 ? C_WARN : C_MUTED), row += 1
+    if debug and row < 21
+        int contextReq = resourceProfile == "Chart Focus" ? 0 : isForex ? 6 : isCrypto ? (fullMacro ? 8 : 4) : 0
+        int globalReq = balancedContext ? 3 : fullMacro ? 8 : 0
+        int econReq = enableEconomic and fullMacro ? 2 : 0
+        int stockReq = isStock and enableStockFinancials and fullMacro ? 2 : 0
+        int radarReq = showRadarEff ? radarLimit : 0
+        int estimatedReq = 5 + contextReq + globalReq + econReq + stockReq + radarReq
+        f_cell(0, row, "DEBUG", C_CRYPTO), f_cell(1, row, "Requests " + str.tostring(estimatedReq) + "/40", estimatedReq <= 36 ? C_BULL : C_WARN), f_cell(2, row, marketType + " · " + styleEff, C_TEXT), f_cell(3, row, resourceProfile, C_MUTED)
+
+string readableAlert = "Quantara Vision | " + syminfo.tickerid + " | " + timeframe.period + " | " + signalState + " | " + (signalDirection > 0 ? "LONG" : signalDirection < 0 ? "SHORT" : "NONE") + " | score=" + str.tostring(activeState ? activeScore : rawScore, "#.0")
+string jsonAlert = "{\"product\":\"Quantara Vision\",\"version\":\"0.1.0\",\"symbol\":\"" + syminfo.tickerid + "\",\"timeframe\":\"" + timeframe.period + "\",\"market_type\":\"" + marketType + "\",\"state\":\"" + signalState + "\",\"direction\":\"" + (signalDirection > 0 ? "long" : signalDirection < 0 ? "short" : "none") + "\",\"score\":" + str.tostring(activeState ? activeScore : rawScore, "#.0") + ",\"entry\":" + f_fmt(entry) + ",\"stop\":" + f_fmt(stop) + ",\"tp1\":" + f_fmt(tp1) + ",\"tp2\":" + f_fmt(tp2) + ",\"tp3\":" + f_fmt(tp3) + ",\"rr\":" + str.tostring(netRR, "#.##") + ",\"event_risk\":" + (highEventRisk ? "true" : "false") + ",\"timestamp\":" + str.tostring(time_close) + "}"
+if alertsEnabled and newCandidate and alertCandidates
+    alert(jsonAlerts ? jsonAlert : readableAlert, confirmClose ? alert.freq_once_per_bar_close : alert.freq_once_per_bar)
+if alertsEnabled and invalidatedNow
+    alert(jsonAlerts ? jsonAlert : readableAlert + " | INVALIDATED", alert.freq_once_per_bar)
+if alertsEnabled and target1Now
+    alert(readableAlert + " | TP1", alert.freq_once_per_bar)
+if alertsEnabled and target2Now
+    alert(readableAlert + " | TP2", alert.freq_once_per_bar)
+if alertsEnabled and target3Now
+    alert(readableAlert + " | TP3", alert.freq_once_per_bar)
+if alertsEnabled and alertStructure and barstate.isconfirmed and (bosUp or bosDown)
+    alert(readableAlert + " | STRUCTURE BREAK", alert.freq_once_per_bar_close)
+if alertsEnabled and alertStructure and barstate.isconfirmed and (retestUp or retestDown)
+    alert(readableAlert + " | RETEST", alert.freq_once_per_bar_close)
+if alertsEnabled and alertEvents and highEventRisk and not highEventRisk[1]
+    alert(readableAlert + " | " + eventStatus, alert.freq_once_per_bar)
+
+alertcondition(newCandidate and signalDirection > 0, "Long Candidate", "Quantara Vision long candidate")
+alertcondition(newCandidate and signalDirection < 0, "Short Candidate", "Quantara Vision short candidate")
+alertcondition(newCandidate and signalDirection > 0 and barstate.isconfirmed, "Confirmed Long", "Quantara Vision confirmed long")
+alertcondition(newCandidate and signalDirection < 0 and barstate.isconfirmed, "Confirmed Short", "Quantara Vision confirmed short")
+alertcondition(invalidatedNow, "Invalidation / Stop", "Quantara Vision plan invalidated")
+alertcondition(target1Now, "TP1", "Quantara Vision TP1 reached")
+alertcondition(target2Now, "TP2", "Quantara Vision TP2 reached")
+alertcondition(target3Now, "TP3", "Quantara Vision TP3 reached")
+alertcondition(bosUp or bosDown, "Structure Break", "Quantara Vision confirmed structure break")
+alertcondition(retestUp or retestDown, "Retest", "Quantara Vision retest")
+alertcondition(highEventRisk, "High Event Risk", "Quantara Vision manual high-impact event window")
