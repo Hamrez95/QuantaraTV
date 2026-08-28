@@ -11,3 +11,11 @@ Forex strength uses a limited basket: EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, an
 ## Global
 
 Balanced uses VIX, DXY, and S&P 500. Macro Focus additionally requests US 10Y, US 2Y, and Gold. Relationships are transparent heuristics and deliberately modest because correlations vary by regime. Invalid symbols return an unavailable/reduced state rather than halting the script where TradingView supports invalid-symbol ignoring.
+
+## Sessions and closures
+
+The regional session module uses configurable IANA time zones for Asia, London/Europe, and New York. This handles daylight-saving transitions where the relevant zone observes them. Exchange-defined regular-session status is available for the current chart bar through Pine. A general, forward-looking exchange-holiday calendar is not available to Pine scripts; no bar exists while the exchange is closed. Manual Event Slots are the supported way to warn about a known closure or special event.
+
+## Higher-timeframe channels
+
+Each of the five MTF requests returns confirmed EMA/RSI state and the last two confirmed pivot highs and lows in one user-defined data object. Selected higher-timeframe channels therefore add no request contexts or tuple-element pressure. The solid boundary connects the validated rising lows or falling highs. The dashed opposite boundary is a deterministic parallel approximation through the latest confirmed opposing pivot. A source timeframe lower than the chart is marked unavailable and is not drawn.

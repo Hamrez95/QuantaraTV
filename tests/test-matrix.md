@@ -10,3 +10,21 @@ Compiler/runtime cells remain unchecked until verified in TradingView. Do not in
 | Missing volume / invalid context symbol | ☐ | ☐ | ☐ | ☐ | ☐ |
 
 For each representative chart test all display modes, presets, and four resource profiles. Record compile errors, request/runtime errors, table overflow, symbol/timeframe changes, session DST boundary, manual event before/after windows, risk math, alert transition duplication, refresh parity, range/trend/high-volatility behavior, and missing-data degradation.
+
+## v0.3.0 focused checks
+
+- On a 1H chart, enable `Enable Higher-TF Trendlines / Channels` and `TF 4`; confirm a labeled `4H ASC CHANNEL` or `4H DESC CHANNEL` appears only when the last two confirmed 4H pivot pairs form a directional channel.
+- Switch the chart to 4H or 1D; confirm lower source timeframes show `…` in the MTF strip and are not drawn as HTF channels.
+- Enable pattern labels and verify Morning/Evening Star, Three Soldiers/Crows, Engulfing, rejection, and Inside-Bar expansion labels occur only at bar close and only with context alignment.
+- Confirm the active plan again shows coral risk and teal reward zones, and that all plan drawings are removed after invalidation, TP3, or expiry.
+- Check London/New York status around a DST boundary and verify exchange-traded charts distinguish `REGULAR OPEN` from `OUTSIDE REGULAR` on available bars.
+# v0.4.0 focused checks
+
+- [ ] On SOLUSDT 1H, enable `Decision Channel Timeframe = TF 4` with TF 4 = 240; verify the 4H channel edge remains based on confirmed pivots after a refresh.
+- [ ] Verify `Market Aware` uses 08:00–17:00 New York for Forex and 09:30–16:00 New York for US cash charts; verify Custom remains unchanged.
+- [ ] Create a setup whose structural stop exceeds Maximum Stop Distance; verify no candidate activates when `Reject Stop Wider Than Maximum` is enabled.
+- [ ] Set JSON alerts on while no plan is active; inspect the message and verify unavailable numbers are `null`, never an em dash.
+- [ ] After invalidation, verify the direction cannot re-enter until cooldown and fresh-trigger requirements are met.
+- [ ] Verify a candle pattern away from a clustered level/sweep/retest does not become an aligned reversal trigger merely because London or New York is active.
+- [ ] Verify a broken level changes role and remains dotted/faded for the short transition window.
+- [ ] Verify Radar `NEW` is a direction-state change in its configured discovery scan, not a chart-engine trade approval.

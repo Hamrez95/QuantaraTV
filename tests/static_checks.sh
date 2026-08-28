@@ -30,14 +30,24 @@ if grep -REn --exclude='static_checks.sh' '(password|api[_-]?key|secret|private[
 fi
 
 if grep -En 'lookahead[[:space:]]*=[[:space:]]*barmerge\.lookahead_on' "$indicator" | while IFS=: read -r line _; do
-  sed -n "${line}p" "$indicator" | grep -q '\[1\]'
+  sed -n "${line}p" "$indicator" | grep -Eq '\[1\]|f_mtf_data\('
 done; then :; else
   echo "Unsafe HTF lookahead_on call: every occurrence must include an offset"
   exit 1
 fi
 
+grep -A4 'f_mtf_data(int strength)' "$indicator" | grep -q '\[1\]'
+
 [[ "$(grep -Eo 'request\.(security|economic|financial|earnings)\(' "$indicator" | wc -l)" -le 40 ]]
 [[ "$(grep -Eo 'max_(lines|labels|boxes)_count[[:space:]]*=[[:space:]]*[0-9]+' "$indicator" | wc -l)" -eq 3 ]]
-! grep -REn 'TODO|FIXME|guaranteed|risk-free|institutional signal|90% win rate' "$root/src"
+! grep -q 'cappedDistance' "$indicator"
+grep -q 'Reject Stop Wider Than Maximum' "$indicator"
+grep -q 'f_json_num(float value)' "$indicator"
+grep -q 'Session Template' "$indicator"
+grep -q 'Decision Channel Timeframe' "$indicator"
+if grep -REn 'TODO|FIXME|guaranteed|risk-free|institutional signal|90% win rate' "$root/src"; then
+  echo "Placeholder or prohibited claim found in release source"
+  exit 1
+fi
 
 echo "Quantara Vision static checks passed"
