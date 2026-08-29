@@ -1,5 +1,5 @@
 //@version=6
-indicator("Quantara Vision v0.4.0", "Quantara Vision", overlay = true, max_bars_back = 1500, max_lines_count = 240, max_labels_count = 160, max_boxes_count = 80, dynamic_requests = true)
+indicator("Quantara Vision v0.5.0", "Quantara Vision", overlay = true, max_bars_back = 1500, max_lines_count = 240, max_labels_count = 160, max_boxes_count = 80, dynamic_requests = true)
 
 // Quantara Vision is decision support, not financial advice. Confirmed signals use closed bars.
 // External headlines/order flow are intentionally unavailable in Pine; event slots are user supplied.
@@ -153,7 +153,7 @@ string econField1 = input.string("IR", "Field 1", options = ["IR", "CPI", "GDP",
 string econCountry2 = input.string("EU", "Country / Region 2", group = G14, inline = "e2")
 string econField2 = input.string("IR", "Field 2", options = ["IR", "CPI", "GDP", "UR"], group = G14, inline = "e2")
 
-string eventBehavior = input.string("Block Candidate", "High-Impact Behavior", options = ["Informational", "Reduce Score", "Block Candidate", "High-Risk Warning"], group = G15)
+string eventBehavior = input.string("Hard Blackout", "High-Impact Behavior", options = ["Informational", "Reduce Score", "Block Candidate", "Hard Blackout", "High-Risk Warning"], group = G15, tooltip = "Hard Blackout blocks new plans during the configured window. Pine cannot ingest CNBC or other live headlines; enter scheduled events here or use the companion-app contract.")
 string event1Name = input.string("", "Event 1 Name", group = G15, inline = "ev1")
 int event1Time = input.time(0, "Time", group = G15, inline = "ev1")
 string event1Market = input.string("", "Affected Market", group = G15, inline = "ev1b")
@@ -175,6 +175,8 @@ string event3Previous = input.string("", "Previous", group = G15, inline = "ev3c
 int eventWarnMinutes = input.int(60, "Warning Window Before · Minutes", 0, 1440, group = G15)
 int eventCooldownMinutes = input.int(30, "Cooldown After · Minutes", 0, 1440, group = G15)
 int reactionBars = input.int(5, "Reaction Evaluation Bars", 1, 50, group = G15)
+int postEventClosedBars = input.int(2, "Post-Event Closed Bars Before New Plans", 0, 30, group = G15, tooltip = "After a high-impact event window, requires this many closed chart bars before a new candidate can activate.")
+bool expirePlanAtHighEvent = input.bool(false, "Expire Active Plan At High Event", group = G15, tooltip = "Decision-support only. Marks the displayed plan expired at a matching high-impact event; it cannot close an exchange position.")
 
 float accountBalance = input.float(10000, "Account Balance", 0, group = G16)
 string accountCurrency = input.string("USD", "Account Currency", group = G16)
@@ -192,12 +194,21 @@ float forexLotUnits = input.float(100000, "Forex Standard Lot Units", 1, group =
 float pipSizeInput = input.float(0.0001, "Forex Pip Size", 0.000001, group = G16)
 float leverageCap = input.float(3, "Crypto Leverage Cap", 1, 100, 0.5, group = G16)
 float liquidationBufferPct = input.float(15, "Liquidation Buffer %", 1, 90, 1, group = G16)
+float tp1ClosePct = input.float(40, "TP1 Suggested Close %", 0, 0, 100, 5, group = G16)
+float tp2ClosePct = input.float(30, "TP2 Suggested Close %", 0, 0, 100, 5, group = G16)
+string afterTp1Action = input.string("Move Stop To Break-even", "After TP1", options = ["Keep Original Stop", "Move Stop To Break-even"], group = G16, tooltip = "A displayed management instruction and alert. Pine does not submit, amend, or close any exchange order.")
+bool trailAfterTp2 = input.bool(true, "After TP2 · Trail Remaining Position", group = G16, tooltip = "Displays runner-management guidance after TP2. It is not broker order execution.")
+int closedPlanHistorySize = input.int(5, "Closed Plan History", 0, 10, group = G16, tooltip = "Keeps a bounded chart-panel log of finished plans. It is a decision record, not verified broker fill history.")
 
 float contextWeight = input.float(5, "Market / Macro Maximum Weight", 0, 10, 0.5, group = G17)
 float eventPenaltyInput = input.float(15, "High Event Risk Penalty", 0, 50, 1, group = G17)
 int staleBars = input.int(40, "Stale Setup Bars", 5, 500, group = G17)
 int reentryCooldownBars = input.int(20, "Re-entry Cooldown Bars", 0, 500, group = G17, tooltip = "Bars to wait after invalidation, expiry, or target completion before the same direction can create a fresh plan.")
 bool requireFreshTrigger = input.bool(true, "Require Fresh Trigger For Re-entry", group = G17, tooltip = "After a completed plan, an old candle pattern or prior breakout cannot immediately recreate the same plan. A new trigger is required.")
+int maxCandidatesPerDay = input.int(4, "Maximum New Plans Per Day", 1, 20, group = G17, tooltip = "Chart-local guardrail. Blocks additional new plans after this number; it does not know positions from other charts or your exchange.")
+float dailyRiskBudgetPct = input.float(3, "Daily Planned-Risk Budget %", 0.1, 20, 0.1, group = G17, tooltip = "Chart-local budget reserved for newly activated plans. It is not realized P&L and cannot see other charts or exchange positions.")
+int maxConsecutiveStops = input.int(2, "Maximum Consecutive Stops", 1, 10, group = G17)
+int stopCooldownBars = input.int(30, "Cooldown After Stop Streak · Bars", 0, 500, group = G17)
 
 bool enableRadar = input.bool(true, "Enable Configured-Symbol Radar", group = G18, tooltip = "Scans configured symbols only. Hidden in Simple + Compact; choose Radar Focus when you want to see it.")
 string radarState = input.string("Compact", "State", options = ["Expanded", "Compact", "Collapsed"], group = G18)
@@ -758,12 +769,19 @@ bool event1Active = f_in_event(event1Time) and f_market_matches(event1Market)
 bool event2Active = f_in_event(event2Time) and f_market_matches(event2Market)
 bool event3Active = f_in_event(event3Time) and f_market_matches(event3Market)
 bool highEventRisk = event1Active and event1Impact == "High" or event2Active and event2Impact == "High" or event3Active and event3Impact == "High"
+int highTime1 = event1Impact == "High" and event1Time > 0 and f_market_matches(event1Market) ? event1Time : 0
+int highTime2 = event2Impact == "High" and event2Time > 0 and f_market_matches(event2Market) ? event2Time : 0
+int highTime3 = event3Impact == "High" and event3Time > 0 and f_market_matches(event3Market) ? event3Time : 0
+int latestHighEventTime = math.max(highTime1, math.max(highTime2, highTime3))
+int barsAfterHighEvent = latestHighEventTime > 0 ? ta.barssince(time[1] < latestHighEventTime and time >= latestHighEventTime) : na
+bool postEventSafetyHold = eventBehavior == "Hard Blackout" and not na(barsAfterHighEvent) and barsAfterHighEvent >= 0 and barsAfterHighEvent < postEventClosedBars
+bool eventBlackout = highEventRisk and (eventBehavior == "Hard Blackout" or eventBehavior == "Block Candidate") or postEventSafetyHold
 bool anyEventConfigured = event1Time > 0 or event2Time > 0 or event3Time > 0
 string eventName = event1Active ? event1Name : event2Active ? event2Name : event3Active ? event3Name : ""
 int eventTime = event1Active ? event1Time : event2Active ? event2Time : event3Active ? event3Time : 0
 string eventForecast = event1Active ? event1Forecast : event2Active ? event2Forecast : event3Active ? event3Forecast : ""
 string eventPrevious = event1Active ? event1Previous : event2Active ? event2Previous : event3Active ? event3Previous : ""
-string eventStatus = not anyEventConfigured ? "NO MANUAL EVENT CONFIGURED" : highEventRisk and timenow < eventTime ? "HIGH IMPACT IN " + str.tostring(math.max(0, math.round((eventTime - timenow) / 60000))) + "m" : highEventRisk and timenow >= eventTime ? "POST-EVENT VOLATILITY" : event1Active or event2Active or event3Active ? "EVENT RISK ACTIVE" : "NO ACTIVE EVENT WINDOW"
+string eventStatus = not anyEventConfigured ? "NO MANUAL EVENT CONFIGURED" : postEventSafetyHold ? "POST-EVENT HOLD · " + str.tostring(math.max(0, postEventClosedBars - barsAfterHighEvent)) + " BARS" : highEventRisk and timenow < eventTime ? "HIGH IMPACT IN " + str.tostring(math.max(0, math.round((eventTime - timenow) / 60000))) + "m" : highEventRisk and timenow >= eventTime ? "EVENT BLACKOUT ACTIVE" : event1Active or event2Active or event3Active ? "EVENT RISK ACTIVE" : "NO ACTIVE EVENT WINDOW"
 float eventMoveAtr = eventTime > 0 and time >= eventTime ? (close - ta.valuewhen(time[1] < eventTime and time >= eventTime, open, 0)) / atr : na
 string eventReaction = na(eventMoveAtr) ? "Observed reaction pending" : math.abs(eventMoveAtr) < 0.5 ? "Muted observed reaction" : eventMoveAtr > 0 ? "Observed move up · " + str.tostring(eventMoveAtr, "#.##") + " ATR" : "Observed move down · " + str.tostring(math.abs(eventMoveAtr), "#.##") + " ATR"
 int eventBarsSince = eventTime > 0 ? ta.barssince(time[1] < eventTime and time >= eventTime) : na
@@ -819,8 +837,21 @@ float rawScore = rawDirection > 0 ? longScore : rawDirection < 0 ? shortScore : 
 string rawSetupName = rawDirection > 0 ? longPlaybookName : rawDirection < 0 ? shortPlaybookName : "No Complete Setup"
 string waitingFor = rawDirection != 0 ? "Ready" : longContext and longLocation ? "WAIT FOR BULLISH TRIGGER" : shortContext and shortLocation ? "WAIT FOR BEARISH TRIGGER" : longContext ? "WAIT FOR LONG LOCATION" : shortContext ? "WAIT FOR SHORT LOCATION" : "WAIT FOR CONTEXT"
 bool barConfirmed = not confirmClose or barstate.isconfirmed
-bool blockedByEvent = highEventRisk and eventBehavior == "Block Candidate"
-bool candidate = signalsAllowed and barConfirmed and rawDirection != 0 and rawScore >= minScoreEff and not blockedByEvent
+bool blockedByEvent = eventBlackout
+var int candidatesToday = 0
+var int consecutiveStops = 0
+var int lastStopBar = na
+var float plannedRiskToday = 0
+bool newTradingDay = ta.change(time("D")) != 0
+if newTradingDay
+    candidatesToday := 0
+    plannedRiskToday := 0
+float configuredRiskCapital = riskMode == "Percentage" ? accountBalance * riskPct / 100 : fixedRisk
+bool dailyPlanLimit = candidatesToday >= maxCandidatesPerDay
+bool dailyRiskLimit = plannedRiskToday + configuredRiskCapital > accountBalance * dailyRiskBudgetPct / 100
+bool stopStreakCooldown = consecutiveStops >= maxConsecutiveStops and not na(lastStopBar) and bar_index - lastStopBar < stopCooldownBars
+string guardrailReason = eventBlackout ? eventStatus : dailyPlanLimit ? "DAILY PLAN LIMIT" : dailyRiskLimit ? "DAILY RISK BUDGET" : stopStreakCooldown ? "STOP-STREAK COOLDOWN" : ""
+bool candidate = signalsAllowed and barConfirmed and rawDirection != 0 and rawScore >= minScoreEff and not blockedByEvent and not dailyPlanLimit and not dailyRiskLimit and not stopStreakCooldown
 bool earlyWatch = signalsAllowed and (longContext and longLocation or shortContext and shortLocation) and not candidate
 
 var string signalState = "None"
@@ -838,14 +869,17 @@ var int lastPlanDirection = 0
 var bool tp1Hit = false
 var bool tp2Hit = false
 var bool tp3Hit = false
+var bool breakEvenApplied = false
+var array<string> closedPlanHistory = array.new_string()
 bool newCandidate = false
 bool invalidatedNow = false
 bool stoppedNow = false
 bool target1Now = false
 bool target2Now = false
 bool target3Now = false
+bool ambiguousBar = false
 
-bool activeState = signalState == "Candidate" or signalState == "Confirmed" or signalState == "Active Plan"
+bool activeState = signalState == "Candidate" or signalState == "Confirmed" or signalState == "Active Plan" or signalState == "TP1 Hit" or signalState == "Protected" or signalState == "TP2 Hit" or signalState == "Runner"
 bool cooldownPassed = na(lastPlanEndBar) or bar_index - lastPlanEndBar >= reentryCooldownBars
 bool currentFreshTrigger = rawDirection > 0 ? longTrigger : rawDirection < 0 ? shortTrigger : false
 bool reentryAllowed = cooldownPassed and (not requireFreshTrigger or currentFreshTrigger or rawDirection != lastPlanDirection)
@@ -855,18 +889,38 @@ if activeState
     target1Now := not tp1Hit and (signalDirection > 0 ? high >= tp1 : low <= tp1)
     target2Now := not tp2Hit and (signalDirection > 0 ? high >= tp2 : low <= tp2)
     target3Now := not tp3Hit and (signalDirection > 0 ? high >= tp3 : low <= tp3)
+    ambiguousBar := invalidatedNow and (target1Now or target2Now or target3Now)
+    if ambiguousBar
+        target1Now := false
+        target2Now := false
+        target3Now := false
     tp1Hit := tp1Hit or target1Now
     tp2Hit := tp2Hit or target2Now
     tp3Hit := tp3Hit or target3Now
     if invalidatedNow
-        signalState := "Invalidated"
+        signalState := ambiguousBar ? "Ambiguous Bar" : "Closed Stop"
     else if target3Now
-        signalState := "Target Reached"
+        signalState := "Closed TP3"
+    else if target2Now
+        signalState := trailAfterTp2 ? "Runner" : "TP2 Hit"
+    else if target1Now
+        if afterTp1Action == "Move Stop To Break-even"
+            stop := entry
+            breakEvenApplied := true
+            signalState := "Protected"
+        else
+            signalState := "TP1 Hit"
+    else if expirePlanAtHighEvent and highEventRisk
+        signalState := "Expired Event"
     else if bar_index - activatedBar > structureExpiry
         signalState := "Expired"
+    else if tp2Hit and trailAfterTp2
+        signalState := "Runner"
+    else if tp1Hit and breakEvenApplied
+        signalState := "Protected"
     else
         signalState := "Active Plan"
-else if candidate and reentryAllowed and (signalState == "None" or signalState == "Early Watch" or signalState == "High Risk" or signalState == "Expired" or signalState == "Invalidated" or signalState == "Target Reached")
+else if candidate and reentryAllowed and (signalState == "None" or signalState == "Early Watch" or signalState == "High Risk" or signalState == "Expired" or signalState == "Expired Event" or signalState == "Invalidated" or signalState == "Target Reached" or signalState == "Closed Stop" or signalState == "Closed TP3" or signalState == "Ambiguous Bar")
     signalState := "Candidate"
     signalDirection := rawDirection
     entry := close
@@ -882,10 +936,13 @@ else if candidate and reentryAllowed and (signalState == "None" or signalState =
     tp1Hit := false
     tp2Hit := false
     tp3Hit := false
+    breakEvenApplied := false
+    candidatesToday += 1
+    plannedRiskToday += configuredRiskCapital
     newCandidate := true
 else if earlyWatch and not activeState
     signalState := "Early Watch"
-else if not activeState and not earlyWatch and signalState != "Invalidated" and signalState != "Target Reached"
+else if not activeState and not earlyWatch and signalState != "Closed Stop" and signalState != "Closed TP3" and signalState != "Ambiguous Bar"
     signalState := highEventRisk and eventBehavior == "High-Risk Warning" ? "High Risk" : "None"
 
 float stopDistance = math.abs(entry - stop)
@@ -921,12 +978,23 @@ if newCandidate and showRiskPlan and displayMode != "Radar Focus"
         rewardBox := box.new(bar_index, math.max(entry, tp3), bar_index + 25, math.min(entry, tp3), bgcolor = color.new(C_BULL, 95), border_color = color.new(C_BULL, 72))
 if activeState and showRiskPlan and displayMode != "Radar Focus" and not na(entryLine)
     line.set_x2(entryLine, bar_index + 1), line.set_x2(stopLine, bar_index + 1), line.set_x2(tp1Line, bar_index + 1), line.set_x2(tp2Line, bar_index + 1), line.set_x2(tp3Line, bar_index + 1)
+    line.set_y1(stopLine, stop), line.set_y2(stopLine, stop)
     if showRiskZones and not na(riskBox)
         box.set_right(riskBox, bar_index + 1), box.set_right(rewardBox, bar_index + 1)
-bool planEndedNow = invalidatedNow or target3Now or signalState == "Expired" and signalState[1] != "Expired"
+bool planEndedNow = (signalState == "Closed Stop" or signalState == "Closed TP3" or signalState == "Expired" or signalState == "Expired Event" or signalState == "Ambiguous Bar") and signalState != signalState[1]
 if planEndedNow
     lastPlanEndBar := bar_index
     lastPlanDirection := signalDirection
+    if signalState == "Ambiguous Bar" or signalState == "Closed Stop" and not breakEvenApplied
+        consecutiveStops += 1
+        lastStopBar := bar_index
+    else
+        consecutiveStops := 0
+    if closedPlanHistorySize > 0
+        string closedSummary = (signalDirection > 0 ? "▲ " : "▼ ") + setupName + " · " + signalState + (tp1Hit ? " · TP1" : "") + (tp2Hit ? " · TP2" : "")
+        array.push(closedPlanHistory, closedSummary)
+        if array.size(closedPlanHistory) > closedPlanHistorySize
+            array.shift(closedPlanHistory)
     line.delete(entryLine), line.delete(stopLine), line.delete(tp1Line), line.delete(tp2Line), line.delete(tp3Line)
     box.delete(riskBox), box.delete(rewardBox)
     entryLine := na
@@ -955,6 +1023,8 @@ var array<int> radarDirs = array.new_int(10, 0)
 var array<float> radarVols = array.new_float(10, na)
 var array<int> radarPrevDirs = array.new_int(10, 0)
 var array<bool> radarChanged = array.new_bool(10, false)
+var array<int> radarOrder = array.new_int()
+var bool radarReadyForChanges = false
 if showRadarEff
     for i = 0 to radarLimit - 1
         [rs_, rd_, rv_, rc_, ra_] = f_radar_score(array.get(radarSymbols, i))
@@ -962,24 +1032,39 @@ if showRadarEff
         array.set(radarScores, i, rs_)
         array.set(radarDirs, i, rd_)
         array.set(radarVols, i, rv_)
-        array.set(radarChanged, i, not na(rs_) and rd_ != priorDirection)
+        array.set(radarChanged, i, radarReadyForChanges and not na(rs_) and rd_ != priorDirection)
         if not na(rs_)
             array.set(radarPrevDirs, i, rd_)
+    array.clear(radarOrder)
+    for i = 0 to radarLimit - 1
+        array.push(radarOrder, i)
+    if radarLimit > 1
+        for i = 0 to radarLimit - 2
+            for j = i + 1 to radarLimit - 1
+                int leftIndex = array.get(radarOrder, i)
+                int rightIndex = array.get(radarOrder, j)
+                float leftScore = nz(array.get(radarScores, leftIndex), -1)
+                float rightScore = nz(array.get(radarScores, rightIndex), -1)
+                if rightScore > leftScore
+                    array.set(radarOrder, i, rightIndex)
+                    array.set(radarOrder, j, leftIndex)
+if barstate.islastconfirmedhistory
+    radarReadyForChanges := true
 
-var table panel = table.new(f_pos(panelPos), 4, 22, bgcolor = color.new(C_PANEL, 4), frame_color = C_BORDER, frame_width = 1, border_color = C_BORDER)
+var table panel = table.new(f_pos(panelPos), 4, 30, bgcolor = color.new(C_PANEL, 4), frame_color = C_BORDER, frame_width = 1, border_color = C_BORDER)
 f_cell(int c, int r, string txt, color txtColor = #E6EDF3, color bg = #111821, string align = text.align_left, string tip = "") => table.cell(panel, c, r, txt, text_color = txtColor, bgcolor = bg, text_size = panelSizeEff, text_halign = align, tooltip = showTooltips ? tip : "")
 if barstate.islast
-    table.clear(panel, 0, 0, 3, 21)
+    table.clear(panel, 0, 0, 3, 29)
     int row = 0
     if showSignalPanel
-        color stateColor = signalState == "Invalidated" ? C_MUTED : signalDirection > 0 ? C_BULL : signalDirection < 0 ? C_BEAR : signalState == "High Risk" ? C_WARN : C_NEUTRAL
-        string stateText = signalState == "Candidate" or signalState == "Active Plan" ? (signalDirection > 0 ? "▲ LONG CANDIDATE" : "▼ SHORT CANDIDATE") : signalState == "Early Watch" ? "◆ EARLY WATCH" : signalState == "Invalidated" ? "× INVALIDATED" : signalState == "High Risk" ? "⚠ HIGH RISK" : signalState == "Target Reached" ? "TP3 · TARGET REACHED" : "— NO TRADE"
+        color stateColor = signalState == "Closed Stop" or signalState == "Ambiguous Bar" ? C_BEAR : signalState == "Closed TP3" ? C_BULL : signalDirection > 0 ? C_BULL : signalDirection < 0 ? C_BEAR : signalState == "High Risk" or eventBlackout ? C_WARN : C_NEUTRAL
+        string stateText = signalState == "Candidate" or signalState == "Active Plan" ? (signalDirection > 0 ? "▲ LONG ACTIVE" : "▼ SHORT ACTIVE") : signalState == "Protected" ? "◈ TP1 · PROTECTED" : signalState == "Runner" ? "◈ TP2 · RUNNER" : signalState == "TP1 Hit" ? "◈ TP1 HIT" : signalState == "TP2 Hit" ? "◈ TP2 HIT" : signalState == "Early Watch" ? "◆ EARLY WATCH" : signalState == "Closed Stop" ? "× CLOSED · STOP" : signalState == "Closed TP3" ? "✓ CLOSED · TP3" : signalState == "Ambiguous Bar" ? "⚠ AMBIGUOUS BAR" : signalState == "Expired Event" ? "⛔ EXPIRED · EVENT" : signalState == "High Risk" or eventBlackout ? "⛔ NO NEW TRADES" : "— NO TRADE"
         string guideTip = "Color guide: teal ▲ = bullish/support/target; coral ▼ = bearish/resistance/stop; amber ◆ = wait or warning; blue = entry or information; purple = broader context. Signals are decision support, not certainty."
-        f_cell(0, row, "QUANTARA VISION", C_CRYPTO), f_cell(1, row, "v0.4.0-dev" + (showGuide ? " ⓘ" : ""), C_MUTED, C_PANEL, text.align_left, showGuide ? guideTip : ""), f_cell(2, row, syminfo.ticker, C_TEXT), f_cell(3, row, timeframe.period, C_MUTED), row += 1
+        f_cell(0, row, "QUANTARA VISION", C_CRYPTO), f_cell(1, row, "v0.5.0" + (showGuide ? " ⓘ" : ""), C_MUTED, C_PANEL, text.align_left, showGuide ? guideTip : ""), f_cell(2, row, syminfo.ticker, C_TEXT), f_cell(3, row, timeframe.period, C_MUTED), row += 1
         f_cell(0, row, stateText, stateColor, C_PANEL, text.align_left, "Current setup lifecycle. Candidate means conditions passed the score threshold; it does not imply certainty."), f_cell(1, row, activeState ? setupName : rawSetupName, C_TEXT, C_PANEL, text.align_left, "Detected setup family. Candle patterns contribute only when aligned with structure, level, trend, session, sweep, or retest context."), f_cell(2, row, "SCORE", C_MUTED, C_PANEL, text.align_left, "Explainable confidence score from 0 to 100 after penalties. Higher is stronger, not certain."), f_cell(3, row, str.tostring(math.round(activeState ? activeScore : rawScore)) + "/100", stateColor, C_PANEL, text.align_right), row += 1
         f_cell(0, row, "REGIME", C_MUTED, C_PANEL, text.align_left, "Confirmed structure and EMA context: BULL, BEAR, or RANGE."), f_cell(1, row, f_dir_text(structureDir), f_dir_color(structureDir)), f_cell(2, row, "SESSION", C_MUTED, C_PANEL, text.align_left, marketStatusTip), f_cell(3, row, showMarketStatus ? marketStatus : activeSession, C_INFO, C_PANEL, text.align_left, marketStatusTip), row += 1
         if not activeState and displayMode != "Minimal"
-            f_cell(0, row, "NEXT", C_INFO, C_PANEL, text.align_left, "Decision ladder: Context → Location → Trigger → Economics. This states the one missing gate instead of implying a trade."), f_cell(1, row, waitingFor, waitingFor == "Ready" ? C_BULL : C_WARN), f_cell(2, row, "LOCATION", C_MUTED, C_PANEL, text.align_left, "Nearest clustered support/resistance or confirmed selected higher-timeframe channel edge."), f_cell(3, row, nearSupport ? "SUPPORT" : nearResistance ? "RESISTANCE" : nearChannelSupport ? decisionChannelName + " CH SUP" : nearChannelResistance ? decisionChannelName + " CH RES" : "NONE", C_TEXT), row += 1
+            f_cell(0, row, "NEXT ACTION", C_INFO, C_PANEL, text.align_left, "Decision ladder: Context → Location → Trigger → Economics. This states the first missing gate or a hard safety block."), f_cell(1, row, guardrailReason != "" ? guardrailReason : waitingFor, guardrailReason != "" ? C_WARN : waitingFor == "Ready" ? C_BULL : C_WARN), f_cell(2, row, "LOCATION", C_MUTED, C_PANEL, text.align_left, "Nearest clustered support/resistance or confirmed selected higher-timeframe channel edge."), f_cell(3, row, nearSupport ? "SUPPORT" : nearResistance ? "RESISTANCE" : nearChannelSupport ? decisionChannelName + " CH SUP" : nearChannelResistance ? decisionChannelName + " CH RES" : "NONE", C_TEXT), row += 1
         f_cell(0, row, "MTF", C_MUTED, C_PANEL, text.align_left, "Confirmed multi-timeframe trend states. ▲ bullish, ▼ bearish, ◆ range/conflicted, … unavailable because the selected timeframe is lower than the chart. HTF values use closed bars."), f_cell(1, row, f_tf_name(tf1) + " " + f_tf_mark(mtf1), f_tf_color(mtf1)), f_cell(2, row, f_tf_name(tf2) + " " + f_tf_mark(mtf2) + "  " + f_tf_name(tf3) + " " + f_tf_mark(mtf3), f_dir_color(mtfSum)), f_cell(3, row, f_tf_name(tf4) + " " + f_tf_mark(mtf4), f_tf_color(mtf4)), row += 1
         if activeState
             f_cell(0, row, "ENTRY", C_MUTED, C_PANEL, text.align_left, "Reference entry captured when the candidate was confirmed."), f_cell(1, row, f_fmt(entry), C_INFO), f_cell(2, row, "STOP", C_MUTED, C_PANEL, text.align_left, "Structural invalidation price. The stop is never widened after activation."), f_cell(3, row, f_fmt(stop), C_BEAR), row += 1
@@ -988,6 +1073,8 @@ if barstate.islast
             if not beginnerMode or displayMode == "Full"
                 f_cell(0, row, isForex ? "Lots approx." : "Units", C_MUTED), f_cell(1, row, str.tostring(isForex ? forexLots : units, "#.####"), C_TEXT), f_cell(2, row, "Margin est.", C_MUTED), f_cell(3, row, str.tostring(estimatedMargin, "#.##") + " " + accountCurrency, C_TEXT), row += 1
             f_cell(0, row, "INVALIDATION", C_WARN, C_PANEL, text.align_left, "Price condition that makes the setup thesis invalid."), f_cell(1, row, signalDirection > 0 ? "Below stop" : "Above stop", C_WARN), f_cell(2, row, "RISK", C_MUTED, C_PANEL, text.align_left, "Planned account risk from your Risk Management settings."), f_cell(3, row, str.tostring(riskCapital, "#.##") + " " + accountCurrency, C_TEXT), row += 1
+            string managementAction = not tp1Hit ? "At TP1: close " + str.tostring(tp1ClosePct) + "%" : not tp2Hit ? (breakEvenApplied ? "Stop at break-even" : "TP1 done · keep stop") : trailAfterTp2 ? "Trail remaining position" : "Runner active"
+            f_cell(0, row, "NEXT ACTION", C_INFO, C_PANEL, text.align_left, "Suggested manual plan management. It is not an exchange instruction or automated close."), f_cell(1, row, managementAction, C_INFO), f_cell(2, row, "PLAN", C_MUTED), f_cell(3, row, signalState, stateColor), row += 1
             f_cell(0, row, "WHY", C_INFO, C_PANEL, text.align_left, "Up to three independent evidence families supporting the candidate."), f_cell(1, row, setupName, C_TEXT, C_PANEL, text.align_left, "The named trigger that was captured when this plan activated."), f_cell(2, row, abnormalVol ? "Volume confirmed" : f_dir_text(mtfSum), C_TEXT), f_cell(3, row, isForex ? str.tostring(forexStopPips, "#.1") + " pips" : nearSupport or nearResistance ? "At key level" : activeSession, C_TEXT), row += 1
         f_cell(0, row, "RISKS", C_CRYPTO, C_PANEL, text.align_left, "Main reasons to wait, reduce confidence, or reject a setup."), f_cell(1, row, mtfConflict ? "MTF conflict" : excessiveVol ? "High volatility" : volCompression ? "Compression" : "—", mtfConflict or excessiveVol ? C_WARN : C_MUTED), f_cell(2, row, lowVolume ? "Low volume" : highEventRisk ? "Event risk" : volExpansion ? "Expansion" : "—", lowVolume or highEventRisk ? C_WARN : C_MUTED), f_cell(3, row, volumeQuality, C_MUTED), row += 1
         if beginnerMode and compactMode
@@ -999,12 +1086,18 @@ if barstate.islast
             f_cell(0, row, "FOREX CONTEXT", C_CRYPTO, C_PANEL, text.align_left, "Relative base/quote currency-strength approximation from a limited major-pair basket. It is not centralized order flow."), f_cell(1, row, fxNarrative, C_TEXT), f_cell(2, row, "Strength Δ", C_MUTED, C_PANEL, text.align_left, "Base currency strength minus quote currency strength."), f_cell(3, row, str.tostring(nz(baseStrength) - nz(quoteStrength), "#.##"), C_TEXT), row += 1
         if enableGlobal and (balancedContext or fullMacro) and not (beginnerMode and compactMode)
             f_cell(0, row, "GLOBAL", C_CRYPTO, C_PANEL, text.align_left, "Modest intermarket context from configured USD, volatility, yield, equity, gold, and oil proxies. Relationships can change by regime."), f_cell(1, row, globalNarrative, C_TEXT), f_cell(2, row, "Weight", C_MUTED), f_cell(3, row, str.tostring(globalContextScore, "#.##"), C_TEXT), row += 1
-        if not (beginnerMode and compactMode) or highEventRisk
-            f_cell(0, row, "EVENT", highEventRisk ? C_WARN : C_MUTED, C_PANEL, text.align_left, "Manual event-risk slot. Pine cannot fetch arbitrary live headlines or fabricate an economic calendar."), f_cell(1, row, eventStatus, highEventRisk ? C_WARN : C_MUTED), f_cell(2, row, eventName + (eventForecast != "" ? " F:" + eventForecast + " P:" + eventPrevious : ""), C_TEXT), f_cell(3, row, f_post_event(eventTime) ? eventReaction + " · " + reactionState : "", C_MUTED), row += 1
+        if not (beginnerMode and compactMode) or eventBlackout
+            f_cell(0, row, "EVENT", eventBlackout ? C_WARN : C_MUTED, C_PANEL, text.align_left, "Manual scheduled-event risk slot. Pine cannot fetch CNBC, arbitrary live headlines, or a live calendar."), f_cell(1, row, eventStatus, eventBlackout ? C_WARN : C_MUTED), f_cell(2, row, eventName + (eventForecast != "" ? " F:" + eventForecast + " P:" + eventPrevious : ""), C_TEXT), f_cell(3, row, f_post_event(eventTime) ? eventReaction + " · " + reactionState : "", C_MUTED), row += 1
         if enableEconomic and fullMacro
             f_cell(0, row, "MACRO · SLOW", C_CRYPTO, C_PANEL, text.align_left, "Latest Pine-supported economic values. Slow-moving context only; never an intraday trigger."), f_cell(1, row, econCountry1Eff + " " + econField1 + " " + f_fmt(econ1), C_TEXT), f_cell(2, row, econCountry2Eff + " " + econField2 + " " + f_fmt(econ2), C_TEXT), f_cell(3, row, "Context only", C_MUTED), row += 1
         if isStock and enableStockFinancials and fullMacro
             f_cell(0, row, "STOCK · FQ", C_CRYPTO, C_PANEL, text.align_left, "Latest available quarterly financial context for stock symbols. Displayed but not forced into technical signal scoring."), f_cell(1, row, "Revenue " + f_fmt(stockRevenue), C_TEXT), f_cell(2, row, "Net income " + f_fmt(stockNetIncome), C_TEXT), f_cell(3, row, "Not scored", C_MUTED), row += 1
+        if closedPlanHistorySize > 0 and array.size(closedPlanHistory) > 0 and row < 29
+            int historyRows = math.min(3, array.size(closedPlanHistory))
+            for historyOffset = 0 to historyRows - 1
+                int historyIndex = array.size(closedPlanHistory) - 1 - historyOffset
+                string historyLabel = historyOffset == 0 ? "LAST PLAN" : "PLAN -" + str.tostring(historyOffset)
+                f_cell(0, row, historyLabel, C_MUTED, C_PANEL, text.align_left, "Bounded indicator plan history. It records model state, not broker-confirmed fills."), f_cell(1, row, array.get(closedPlanHistory, historyIndex), C_TEXT), f_cell(2, row, historyOffset == 0 ? "GUARD" : "", C_MUTED), f_cell(3, row, historyOffset == 0 ? str.tostring(candidatesToday) + "/" + str.tostring(maxCandidatesPerDay) + " · S" + str.tostring(consecutiveStops) : "", guardrailReason != "" and historyOffset == 0 ? C_WARN : C_MUTED), row += 1
     if showRadarEff
         f_cell(0, row, "QUANTARA RADAR", C_CRYPTO, C_PANEL, text.align_left, "Configured-symbol scanner only. It is not an unlimited market screener and its headers are not clickable."), f_cell(1, row, radarState, C_MUTED), f_cell(2, row, str.tostring(radarLimit) + " symbols", C_MUTED), f_cell(3, row, radarTf, C_INFO), row += 1
         if radarState == "Collapsed"
@@ -1017,16 +1110,18 @@ if barstate.islast
         else
             f_cell(0, row, "SYMBOL", C_MUTED, C_SURFACE), f_cell(1, row, "BIAS", C_MUTED, C_SURFACE), f_cell(2, row, "SCORE", C_MUTED, C_SURFACE), f_cell(3, row, "WARN", C_MUTED, C_SURFACE), row += 1
             int requestedRows = radarState == "Expanded" ? radarLimit : math.min(6, radarLimit)
-            int rowsToShow = math.min(requestedRows, 22 - row)
+            int rowsToShow = math.min(requestedRows, 30 - row)
             for i = 0 to rowsToShow - 1
-                float rs = array.get(radarScores, i)
-                int rd = array.get(radarDirs, i)
-                float rv = array.get(radarVols, i)
-                string symbolText = array.get(radarSymbols, i)
+                int radarIndex = array.get(radarOrder, i)
+                float rs = array.get(radarScores, radarIndex)
+                int rd = array.get(radarDirs, radarIndex)
+                float rv = array.get(radarVols, radarIndex)
+                string symbolText = array.get(radarSymbols, radarIndex)
                 string shortSymbol = str.contains(symbolText, ":") ? array.get(str.split(symbolText, ":"), 1) : symbolText
-                bool changed = array.get(radarChanged, i)
-                f_cell(0, row, shortSymbol, C_TEXT), f_cell(1, row, f_tf_mark(rd) + (rd > 0 ? " LONG" : rd < 0 ? " SHORT" : " WAIT"), f_dir_color(rd)), f_cell(2, row, na(rs) ? "—" : str.tostring(math.round(rs)), C_TEXT), f_cell(3, row, na(rs) ? "DATA" : changed ? "NEW" : not na(rv) and rv < 0.65 ? "LOW VOL" : "—", na(rs) or changed or not na(rv) and rv < 0.65 ? C_WARN : C_MUTED), row += 1
-    if debug and row < 21
+                bool changed = array.get(radarChanged, radarIndex)
+                string radarAction = na(rs) ? "DATA" : eventBlackout ? "BLOCKED" : rs >= minScoreEff and rd != 0 ? "READY" : changed ? "NEW" : not na(rv) and rv < 0.65 ? "LOW VOL" : "WATCH"
+                f_cell(0, row, shortSymbol, C_TEXT), f_cell(1, row, f_tf_mark(rd) + (rd > 0 ? " LONG" : rd < 0 ? " SHORT" : " WAIT"), f_dir_color(rd)), f_cell(2, row, na(rs) ? "—" : str.tostring(math.round(rs)), C_TEXT), f_cell(3, row, radarAction, radarAction == "READY" ? C_BULL : radarAction == "WATCH" ? C_MUTED : C_WARN), row += 1
+    if debug and row < 29
         int contextReq = resourceProfile == "Chart Focus" ? 0 : isForex ? 6 : isCrypto ? (fullMacro ? 8 : 4) : 0
         int globalReq = balancedContext ? 3 : fullMacro ? 8 : 0
         int econReq = enableEconomic and fullMacro ? 2 : 0
@@ -1036,32 +1131,38 @@ if barstate.islast
         f_cell(0, row, "DEBUG", C_CRYPTO), f_cell(1, row, "Requests " + str.tostring(estimatedReq) + "/40", estimatedReq <= 36 ? C_BULL : C_WARN), f_cell(2, row, marketType + " · " + styleEff, C_TEXT), f_cell(3, row, resourceProfile, C_MUTED)
 
 string readableAlert = "Quantara Vision | " + syminfo.tickerid + " | " + timeframe.period + " | " + signalState + " | " + (signalDirection > 0 ? "LONG" : signalDirection < 0 ? "SHORT" : "NONE") + " | score=" + str.tostring(activeState ? activeScore : rawScore, "#.0")
-string jsonAlert = "{\"product\":\"Quantara Vision\",\"version\":\"0.4.0-dev\",\"symbol\":\"" + syminfo.tickerid + "\",\"timeframe\":\"" + timeframe.period + "\",\"market_type\":\"" + marketType + "\",\"state\":\"" + signalState + "\",\"direction\":\"" + (signalDirection > 0 ? "long" : signalDirection < 0 ? "short" : "none") + "\",\"score\":" + f_json_num(activeState ? activeScore : rawScore) + ",\"setup\":\"" + setupName + "\",\"entry\":" + f_json_num(entry) + ",\"stop\":" + f_json_num(stop) + ",\"tp1\":" + f_json_num(tp1) + ",\"tp2\":" + f_json_num(tp2) + ",\"tp3\":" + f_json_num(tp3) + ",\"rr\":" + f_json_num(netRR) + ",\"event_risk\":" + (highEventRisk ? "true" : "false") + ",\"timestamp\":" + str.tostring(time_close) + "}"
+string jsonAlert = "{\"product\":\"Quantara Vision\",\"version\":\"0.5.0\",\"symbol\":\"" + syminfo.tickerid + "\",\"timeframe\":\"" + timeframe.period + "\",\"market_type\":\"" + marketType + "\",\"state\":\"" + signalState + "\",\"direction\":\"" + (signalDirection > 0 ? "long" : signalDirection < 0 ? "short" : "none") + "\",\"score\":" + f_json_num(activeState ? activeScore : rawScore) + ",\"setup\":\"" + setupName + "\",\"entry\":" + f_json_num(entry) + ",\"stop\":" + f_json_num(stop) + ",\"tp1\":" + f_json_num(tp1) + ",\"tp2\":" + f_json_num(tp2) + ",\"tp3\":" + f_json_num(tp3) + ",\"rr\":" + f_json_num(netRR) + ",\"event_risk\":" + (eventBlackout ? "true" : "false") + ",\"timestamp\":" + str.tostring(time_close) + "}"
 if alertsEnabled and newCandidate and alertCandidates
     alert(jsonAlerts ? jsonAlert : readableAlert, confirmClose ? alert.freq_once_per_bar_close : alert.freq_once_per_bar)
-if alertsEnabled and invalidatedNow
+if alertsEnabled and invalidatedNow and not ambiguousBar
     alert(jsonAlerts ? jsonAlert : readableAlert + " | INVALIDATED", alert.freq_once_per_bar)
+if alertsEnabled and ambiguousBar
+    alert(jsonAlerts ? jsonAlert : readableAlert + " | AMBIGUOUS BAR — REVIEW OHLC ORDER MANUALLY", alert.freq_once_per_bar)
 if alertsEnabled and target1Now
-    alert(readableAlert + " | TP1", alert.freq_once_per_bar)
+    alert(readableAlert + " | TP1 HIT | SUGGEST CLOSE " + str.tostring(tp1ClosePct) + "%" + (afterTp1Action == "Move Stop To Break-even" ? " | MOVE STOP TO BE" : ""), alert.freq_once_per_bar)
 if alertsEnabled and target2Now
-    alert(readableAlert + " | TP2", alert.freq_once_per_bar)
+    alert(readableAlert + " | TP2 HIT | SUGGEST CLOSE " + str.tostring(tp2ClosePct) + "%" + (trailAfterTp2 ? " | TRAIL RUNNER" : ""), alert.freq_once_per_bar)
 if alertsEnabled and target3Now
-    alert(readableAlert + " | TP3", alert.freq_once_per_bar)
+    alert(readableAlert + " | CLOSED TP3", alert.freq_once_per_bar)
+if alertsEnabled and planEndedNow and (signalState == "Closed Stop" or signalState == "Ambiguous Bar" or signalState == "Expired Event")
+    alert(jsonAlerts ? jsonAlert : readableAlert + " | PLAN CLOSED", alert.freq_once_per_bar)
 if alertsEnabled and alertStructure and barstate.isconfirmed and (bosUp or bosDown)
     alert(readableAlert + " | STRUCTURE BREAK", alert.freq_once_per_bar_close)
 if alertsEnabled and alertStructure and barstate.isconfirmed and (retestUp or retestDown)
     alert(readableAlert + " | RETEST", alert.freq_once_per_bar_close)
-if alertsEnabled and alertEvents and highEventRisk and not highEventRisk[1]
+if alertsEnabled and alertEvents and eventBlackout and not eventBlackout[1]
     alert(readableAlert + " | " + eventStatus, alert.freq_once_per_bar)
 
 alertcondition(newCandidate and signalDirection > 0, "Long Candidate", "Quantara Vision long candidate")
 alertcondition(newCandidate and signalDirection < 0, "Short Candidate", "Quantara Vision short candidate")
 alertcondition(newCandidate and signalDirection > 0 and barstate.isconfirmed, "Confirmed Long", "Quantara Vision confirmed long")
 alertcondition(newCandidate and signalDirection < 0 and barstate.isconfirmed, "Confirmed Short", "Quantara Vision confirmed short")
-alertcondition(invalidatedNow, "Invalidation / Stop", "Quantara Vision plan invalidated")
-alertcondition(target1Now, "TP1", "Quantara Vision TP1 reached")
-alertcondition(target2Now, "TP2", "Quantara Vision TP2 reached")
+alertcondition(invalidatedNow and not ambiguousBar, "Invalidation / Stop", "Quantara Vision plan invalidated")
 alertcondition(target3Now, "TP3", "Quantara Vision TP3 reached")
+alertcondition(target1Now, "TP1 Management", "Quantara Vision TP1 reached: apply configured manual management action")
+alertcondition(target2Now, "TP2 Management", "Quantara Vision TP2 reached: manage remaining position")
+alertcondition(ambiguousBar, "Ambiguous Bar", "Quantara Vision cannot determine target/stop order inside this OHLC bar")
+alertcondition(planEndedNow, "Plan Closed", "Quantara Vision plan closed, expired, or had ambiguous OHLC order")
 alertcondition(bosUp or bosDown, "Structure Break", "Quantara Vision confirmed structure break")
 alertcondition(retestUp or retestDown, "Retest", "Quantara Vision retest")
-alertcondition(highEventRisk, "High Event Risk", "Quantara Vision manual high-impact event window")
+alertcondition(eventBlackout, "Event Blackout", "Quantara Vision manual high-impact event blackout")

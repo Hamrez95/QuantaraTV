@@ -27,3 +27,6 @@ Any future core-rule change must update both Pine files and this table in the sa
 | R:R and costs | Strategy Properties plus representative target | Partial — production uses configured spread/fee/slippage and opposing clustered level |
 | Confirmed MTF / HTF channel | Not requested by strategy | Not covered by design; validation keeps a stable core only |
 | Crypto, Forex, macro, events, Radar | Not scored by strategy | Not covered; these are context/discovery modules, not a backtest claim |
+# v0.5.0 lifecycle note
+
+The strategy validation script remains a core entry/stop/target harness. It does not validate partial exchange fills, true intra-bar execution order, broker amendments, the manual event calendar, or companion-app notifications. The production indicator explicitly labels those limits.

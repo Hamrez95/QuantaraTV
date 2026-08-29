@@ -13,6 +13,7 @@ required=(
   "$root/docs/validation.md" "$root/docs/pine-limitations.md"
   "$root/docs/design-implementation-map.md" "$root/tests/test-matrix.md"
   "$root/tests/repainting-checklist.md" "$root/tests/parity-checklist.md"
+  "$root/docs/companion-news-bridge.md" "$root/docs/release-notes-v0.5.0.md"
 )
 
 for file in "${required[@]}"; do
@@ -45,6 +46,10 @@ grep -q 'Reject Stop Wider Than Maximum' "$indicator"
 grep -q 'f_json_num(float value)' "$indicator"
 grep -q 'Session Template' "$indicator"
 grep -q 'Decision Channel Timeframe' "$indicator"
+grep -q 'Hard Blackout' "$indicator"
+grep -q 'TP1 Suggested Close' "$indicator"
+grep -q 'Ambiguous Bar' "$indicator"
+grep -q 'companion-news-bridge.md' "$root/CHANGELOG.md"
 if grep -REn 'TODO|FIXME|guaranteed|risk-free|institutional signal|90% win rate' "$root/src"; then
   echo "Placeholder or prohibited claim found in release source"
   exit 1
