@@ -11,5 +11,7 @@
 - Pine has no universal future exchange-holiday calendar. Exchange closures normally appear as missing bars; known closures must be entered manually as Event Slots.
 - Forex volume is decentralized feed/tick volume, never centralized market volume.
 - Arbitrary news/APIs, order execution, broker positions, spreads, and liquidation prices are unavailable without a separate companion application.
+- Runtime `alert()` calls support dynamic workflow messages, but no script can create the running TradingView alert for the user. `alertcondition()` items remain separately selectable and each active condition uses the user's plan allowance.
+- Archived plans are chart-data model outcomes only; Pine cannot verify the order or price of broker/exchange fills inside a historical OHLC bar.
 - Economic values are slow context, not event timestamps or intraday triggers.
 - Pine inputs cannot rewrite each other; presets calculate effective values internally.

@@ -55,3 +55,10 @@ For an SOL chart:
 - In **Risk Management**, configure TP1/TP2 suggested close percentages and the TP1 protection rule. These generate chart guidance and alerts only; they do not send an order to an exchange.
 - In **Signal Scoring**, Maximum New Plans Per Day and Maximum Consecutive Stops are chart-local safety rails. They cannot see positions opened on a different chart or exchange account.
 - In the compact panel, read **state → NEXT ACTION → location → MTF**. A Closed state refers to this indicator plan, not a broker-confirmed fill.
+
+# v0.6.0 fast decision workflow
+
+- Read **READINESS** before the score: `C` Context, `L` Location, `T` Trigger, `E` Economics, and `S` Safety. `✓` passes; `·` is still missing; `!` is a safety block.
+- **QUALITY A** requires all five gates plus score 80 or higher. **QUALITY B** requires all five gates and your configured minimum score. These are evidence labels, never performance guarantees.
+- In **Colors + Visibility**, leave `Show Faded Archived Plans` on if you want a brief visual record after a model plan ends. They are deliberately faded and are not exchange fills.
+- In **Alerts**, start with `Plan Management` if you already entered manually. Use `Candidate Only` when scanning, and `Risk Only` around high-impact news. Create one TradingView script alert for `alert()` calls; changing inputs later requires recreating the alert in TradingView.
