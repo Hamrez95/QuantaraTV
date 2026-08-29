@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.0
+
+- Added a compact five-gate decision ladder: Context, Location, Trigger, Economics, and Safety.
+- Added transparent `QUALITY A`, `QUALITY B`, and `WATCH` labels without making any win-rate claim.
+- Added bounded faded archived plan lines and labels for post-plan chart review; they remain explicitly model-state records, not broker fills.
+- Added runtime alert workflow profiles to reduce noise: Candidate Only, Plan Management, Risk Only, or All.
+- Added `docs/trader-workflow-audit-v0.6.0.md` to document the trader-first critique loop and deferred Pine limitations.
+
 ## v0.5.0
 
 - Added a deterministic plan lifecycle with TP1/TP2 management guidance, break-even protection option, runner state, closed-plan history, and ambiguous-bar disclosure.

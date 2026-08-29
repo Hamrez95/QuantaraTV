@@ -21,6 +21,10 @@ Penalties are explicit: low volume −7, MTF conflict −8, excessive volatility
 Lifecycle: None → Early Watch → Candidate → Active Plan → TP1 Hit / Protected → TP2 Hit / Runner → Closed TP3, Closed Stop, Expired, or Expired Event. Entry and targets freeze on activation. The Stop is never moved farther away; it may move to break-even only when the configured TP1 management rule requests it. If one OHLC bar touches both Stop and a target, the result is shown as Ambiguous Bar rather than claiming a fill sequence. Alerts fire on transitions/events instead of every bar.
 
 Quality labels describe evidence strength only. They are not win-rate claims.
+
+## v0.6.0 readiness ladder
+
+The panel exposes five independent gates before a quality label is granted: **Context**, **Location**, **Trigger**, **Economics**, and **Safety**. A candidate needs each gate. Quality A additionally requires score 80 or higher; Quality B requires the configured candidate threshold. The labels are deliberately deterministic and do not predict probability of profit.
 # v0.4.0 decision gates
 
 The production indicator does not treat a high score as a trade by itself. A candidate must pass four independent gates:
