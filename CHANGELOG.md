@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.0
+
+- Added a deterministic plan lifecycle with TP1/TP2 management guidance, break-even protection option, runner state, closed-plan history, and ambiguous-bar disclosure.
+- Added scheduled-event hard blackout, post-event closed-bar safety hold, chart-local candidate limits, and stop-streak cooldown.
+- Made Radar rank configured symbols and surface READY, WATCH, BLOCKED, NEW, LOW VOL, and DATA states.
+- Added a companion news/event bridge specification; the Pine script still does not claim live CNBC or headline access.
+- See docs/companion-news-bridge.md for the Pine/companion boundary.
+
 ## v0.4.0
 
 - Hardened session semantics, structural-stop safety, pre-candidate trade economics, re-entry guards, and JSON alerts.

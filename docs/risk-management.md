@@ -12,3 +12,9 @@ Forex lots are approximate units divided by user-supplied standard-lot units. Pi
 `Maximum Stop Distance · ATR` is a safety filter, not a stop-compression tool. When a deterministic structural stop is farther away than the configured maximum, the default behavior is to reject the candidate. It never moves the stop closer to force a position size or make a setup look acceptable.
 
 The tentative net R:R is calculated before a plan is activated, using configured fees, spread, slippage, the structural distance, and the nearest valid opposing clustered level when available. A fallback multiple-R objective is used only when no opposing level exists.
+
+## Plan management (v0.5.0)
+
+TP1/TP2 percentages, break-even protection, and runner guidance are manual decision aids. They do not place, modify, or close a broker/exchange order. A plan marked Closed is a Quantara Vision model-state outcome only.
+
+An OHLC bar can touch both a Stop and a target without revealing which price occurred first. Quantara Vision marks this as Ambiguous Bar; it does not claim a profitable target fill. The daily-plan and stop-streak limits are chart-local safety guards, not portfolio-wide account controls.

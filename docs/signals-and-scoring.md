@@ -18,7 +18,7 @@ The Price Action family recognizes deterministic OHLC approximations of bullish/
 
 Penalties are explicit: low volume −7, MTF conflict −8, excessive volatility −8, contextual Doji/indecision −4, and configurable event penalty. `Block Candidate` prevents activation without inventing direction. The greater directional score must exceed the other by seven points.
 
-Lifecycle: None → Early Watch → Candidate → Active Plan → Invalidated / Target Reached / Expired. Entry, Stop, and targets freeze on activation. The Stop is never moved farther away. Alerts fire on transitions/events instead of every bar.
+Lifecycle: None → Early Watch → Candidate → Active Plan → TP1 Hit / Protected → TP2 Hit / Runner → Closed TP3, Closed Stop, Expired, or Expired Event. Entry and targets freeze on activation. The Stop is never moved farther away; it may move to break-even only when the configured TP1 management rule requests it. If one OHLC bar touches both Stop and a target, the result is shown as Ambiguous Bar rather than claiming a fill sequence. Alerts fire on transitions/events instead of every bar.
 
 Quality labels describe evidence strength only. They are not win-rate claims.
 # v0.4.0 decision gates

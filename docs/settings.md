@@ -49,3 +49,9 @@ For an SOL chart:
 - In **Trendlines**, set **Decision Channel Timeframe = TF 4** while TF 4 is `240` (4H). Turn on `Enable Higher-TF Trendlines / Channels` and `TF 4` only when you want the visual overlay. The decision gate itself uses the confirmed 4H pivots and can stay on without drawing all lines.
 - In **Risk Management**, leave `Reject Stop Wider Than Maximum` on. A rejected setup means the structural stop is too far away for your rule, not that the indicator moved it.
 - Read the panel in order: **REGIME → NEXT → MTF → Entry/Stop/Targets**. `NEXT` tells you whether the missing item is context, location, or trigger.
+# v0.5.0 trade-execution awareness
+
+- In **News / Event Risk**, enter upcoming scheduled releases manually. Choose **Hard Blackout** for CPI, NFP, FOMC, rate decisions, GDP, and similar releases; set the post-event closed-bar hold before permitting a new plan.
+- In **Risk Management**, configure TP1/TP2 suggested close percentages and the TP1 protection rule. These generate chart guidance and alerts only; they do not send an order to an exchange.
+- In **Signal Scoring**, Maximum New Plans Per Day and Maximum Consecutive Stops are chart-local safety rails. They cannot see positions opened on a different chart or exchange account.
+- In the compact panel, read **state → NEXT ACTION → location → MTF**. A Closed state refers to this indicator plan, not a broker-confirmed fill.
