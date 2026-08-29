@@ -36,3 +36,10 @@ For each representative chart test all display modes, presets, and four resource
 - [ ] Configure a matching High event with Hard Blackout; verify new candidates are blocked before/during the window and for the configured post-event closed bars.
 - [ ] Trigger consecutive stops; verify the chart-local cooldown prevents another candidate. Change day and verify the daily plan counter resets.
 - [ ] Verify Radar is score ordered and uses READY, WATCH, BLOCKED, NEW, LOW VOL, or DATA; verify its first loaded state does not falsely show NEW.
+
+# v0.6.0 focused checks
+
+- [ ] Confirm `READINESS` displays C/L/T/E/S accurately before a candidate and Safety switches to `!` during an event blackout or guardrail block.
+- [ ] Confirm Quality A requires all five passes and score 80+, while Quality B requires all five passes and the configured minimum score.
+- [ ] Close more plans than Maximum Archived Plans; verify only the configured number of faded five-line archived plans and labels remain.
+- [ ] Select each Alert Workflow profile and verify runtime `alert()` notifications are limited to the selected workflow; alertcondition entries remain selectable separately.

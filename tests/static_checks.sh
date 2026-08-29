@@ -14,6 +14,7 @@ required=(
   "$root/docs/design-implementation-map.md" "$root/tests/test-matrix.md"
   "$root/tests/repainting-checklist.md" "$root/tests/parity-checklist.md"
   "$root/docs/companion-news-bridge.md" "$root/docs/release-notes-v0.5.0.md"
+  "$root/docs/trader-workflow-audit-v0.6.0.md" "$root/docs/release-notes-v0.6.0.md"
 )
 
 for file in "${required[@]}"; do
@@ -49,7 +50,11 @@ grep -q 'Decision Channel Timeframe' "$indicator"
 grep -q 'Hard Blackout' "$indicator"
 grep -q 'TP1 Suggested Close' "$indicator"
 grep -q 'Ambiguous Bar' "$indicator"
+grep -q 'QUALITY A' "$indicator"
+grep -q 'Show Faded Archived Plans' "$indicator"
+grep -q 'Alert Workflow' "$indicator"
 grep -q 'companion-news-bridge.md' "$root/CHANGELOG.md"
+grep -q 'trader-workflow-audit-v0.6.0.md' "$root/CHANGELOG.md"
 if grep -REn 'TODO|FIXME|guaranteed|risk-free|institutional signal|90% win rate' "$root/src"; then
   echo "Placeholder or prohibited claim found in release source"
   exit 1

@@ -18,3 +18,7 @@ The tentative net R:R is calculated before a plan is activated, using configured
 TP1/TP2 percentages, break-even protection, and runner guidance are manual decision aids. They do not place, modify, or close a broker/exchange order. A plan marked Closed is a Quantara Vision model-state outcome only.
 
 An OHLC bar can touch both a Stop and a target without revealing which price occurred first. Quantara Vision marks this as Ambiguous Bar; it does not claim a profitable target fill. The daily-plan and stop-streak limits are chart-local safety guards, not portfolio-wide account controls.
+
+## Review context (v0.6.0)
+
+Faded archived plan lines preserve a bounded visual record of a finished Quantara model plan. They support discretionary review only. Their status is determined from chart OHLC data, not an exchange order or broker fill report.

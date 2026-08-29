@@ -6,15 +6,15 @@ It does not execute orders, fetch arbitrary news, promise profitability, or depe
 
 ## Install
 
-Copy [`src/quantara_vision.pine`](src/quantara_vision.pine) into TradingView Pine Editor, save, choose **Add to chart**, and start with `Balanced / Intraday / Compact / Balanced`. Version 0.3.0 keeps the interface English-only, enables native hover help, restores filled active position plans, and adds selectable confirmed higher-timeframe channels plus context-aware candle-pattern scoring.
+Copy [`src/quantara_vision.pine`](src/quantara_vision.pine) into TradingView Pine Editor, save, choose **Add to chart**, and start with `Balanced / Intraday / Compact / Balanced`. Version 0.6.0 adds a five-gate readiness ladder, transparent quality tiers, bounded faded archived plan review, and focused runtime-alert workflows while preserving the English-only interface and confirmed higher-timeframe channels.
 
 The validation companion is [`src/quantara_validation_strategy.pine`](src/quantara_validation_strategy.pine). It intentionally duplicates the documented core rules because Pine cannot import arbitrary local files.
 
 ## Status
 
-- Version: `0.3.0`
+- Version: `0.6.0`
 - Design baseline: Quantara Vision Design Freeze v1.0
 - Static checks: automated in GitHub Actions
 - TradingView compiler: must be verified in the authenticated Pine Editor before calling the release compiler-verified
 
-See [installation](docs/installation.md), [settings](docs/settings.md), [scoring](docs/signals-and-scoring.md), [limitations](docs/pine-limitations.md), and [validation](docs/validation.md).
+See [installation](docs/installation.md), [settings](docs/settings.md), [scoring](docs/signals-and-scoring.md), [trader workflow audit](docs/trader-workflow-audit-v0.6.0.md), [limitations](docs/pine-limitations.md), and [validation](docs/validation.md).
