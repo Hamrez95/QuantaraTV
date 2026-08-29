@@ -28,3 +28,11 @@ For each representative chart test all display modes, presets, and four resource
 - [ ] Verify a candle pattern away from a clustered level/sweep/retest does not become an aligned reversal trigger merely because London or New York is active.
 - [ ] Verify a broken level changes role and remains dotted/faded for the short transition window.
 - [ ] Verify Radar `NEW` is a direction-state change in its configured discovery scan, not a chart-engine trade approval.
+# v0.5.0 focused checks
+
+- [ ] Trigger TP1 and verify the panel states the configured manual close percentage and break-even action; it must not claim an exchange order was sent.
+- [ ] Trigger TP2 and verify Runner/trail guidance; trigger TP3 and verify the plan closes and enters bounded history once.
+- [ ] On a candle whose OHLC touches both Stop and a target, verify AMBIGUOUS BAR rather than a false sequence claim.
+- [ ] Configure a matching High event with Hard Blackout; verify new candidates are blocked before/during the window and for the configured post-event closed bars.
+- [ ] Trigger consecutive stops; verify the chart-local cooldown prevents another candidate. Change day and verify the daily plan counter resets.
+- [ ] Verify Radar is score ordered and uses READY, WATCH, BLOCKED, NEW, LOW VOL, or DATA; verify its first loaded state does not falsely show NEW.
