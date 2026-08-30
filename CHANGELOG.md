@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.2
+
+- Fixed the TP1/TP2 percentage-input signatures for Pine v6.
+- Made Watch-state readiness show the stronger provisional direction instead of a misleading fixed `1/5` result.
+- Added bounded support/resistance labels with side, touch count, and an optional detailed state.
+- Reworded the compact-panel execution boundary so it is not mistaken for a signal block.
+
 ## v0.6.1
 
 - Increased the default visibility of confirmed market-structure labels from tiny to normal size.
