@@ -1,5 +1,5 @@
 //@version=6
-indicator("Quantara Vision v0.6.0", "Quantara Vision", overlay = true, max_bars_back = 1500, max_lines_count = 240, max_labels_count = 160, max_boxes_count = 80, dynamic_requests = true)
+indicator("Quantara Vision v0.6.1", "Quantara Vision", overlay = true, max_bars_back = 1500, max_lines_count = 240, max_labels_count = 160, max_boxes_count = 80, dynamic_requests = true)
 
 // Quantara Vision is decision support, not financial advice. Confirmed signals use closed bars.
 // External headlines/order flow are intentionally unavailable in Pine; event slots are user supplied.
@@ -71,6 +71,7 @@ bool showOverlapBg = input.bool(false, "Overlap", group = G04, inline = "session
 bool showMarketStatus = input.bool(true, "Show Exchange / Session Status", group = G04, tooltip = "Shows the active regional session and, where Pine exposes it, whether the current chart bar is inside the exchange's regular market session. Exchange holidays create no bars, so future holiday calendars cannot be detected automatically.")
 
 bool showStructure = input.bool(true, "Show Confirmed Structure", group = G05, tooltip = "HH = higher high, HL = higher low, LH = lower high, LL = lower low, BOS = break of structure, CHoCH = possible structure change.")
+string structureLabelSize = input.string("Normal", "Chart Label Size", options = ["Compact", "Normal", "Large"], group = G05, tooltip = "Controls the on-chart size of HH, HL, LH, LL, BOS, CHoCH, and liquidity-sweep labels. Normal is the readable default; choose Large when viewing from farther away or on a high-resolution screen.")
 int maxStructureLabels = input.int(10, "Maximum Recent Labels", 4, 60, group = G05, tooltip = "Keeps only this many recent structure labels to prevent chart clutter.")
 float breakoutAtr = input.float(0.12, "Breakout Confirmation · ATR", 0, 1, 0.01, group = G05)
 int structureExpiry = input.int(120, "Setup Expiry Bars", 10, 500, group = G05)
@@ -383,9 +384,12 @@ var array<bool> srIsSupport = array.new<bool>()
 var array<line> srLines = array.new<line>()
 var array<int> srBrokenBar = array.new<int>()
 
+f_structure_label_size() =>
+    structureLabelSize == "Compact" ? size.small : structureLabelSize == "Large" ? size.large : size.normal
+
 f_add_structure(int x, float y, string txt, color clr, bool above) =>
     if showStructure and displayMode != "Radar Focus"
-        label lb = label.new(x, y, txt, xloc = xloc.bar_index, style = above ? label.style_label_down : label.style_label_up, color = color.new(C_CANVAS, 100), textcolor = clr, size = size.tiny)
+        label lb = label.new(x, y, txt, xloc = xloc.bar_index, style = above ? label.style_label_down : label.style_label_up, color = color.new(C_CANVAS, 100), textcolor = clr, size = f_structure_label_size())
         array.push(structureLabels, lb)
         if array.size(structureLabels) > maxStructureLabels
             label.delete(array.shift(structureLabels))
@@ -1094,7 +1098,7 @@ if barstate.islast
         string panelQuality = activeState ? activeQuality : qualityText
         string stateText = signalState == "Candidate" or signalState == "Active Plan" ? (signalDirection > 0 ? "▲ LONG ACTIVE" : "▼ SHORT ACTIVE") : signalState == "Protected" ? "◈ TP1 · PROTECTED" : signalState == "Runner" ? "◈ TP2 · RUNNER" : signalState == "TP1 Hit" ? "◈ TP1 HIT" : signalState == "TP2 Hit" ? "◈ TP2 HIT" : signalState == "Early Watch" ? "◆ EARLY WATCH" : signalState == "Closed Stop" ? "× CLOSED · STOP" : signalState == "Closed TP3" ? "✓ CLOSED · TP3" : signalState == "Ambiguous Bar" ? "⚠ AMBIGUOUS BAR" : signalState == "Expired Event" ? "⛔ EXPIRED · EVENT" : signalState == "High Risk" or eventBlackout ? "⛔ NO NEW TRADES" : "— NO TRADE"
         string guideTip = "Color guide: teal ▲ = bullish/support/target; coral ▼ = bearish/resistance/stop; amber ◆ = wait or warning; blue = entry or information; purple = broader context. Signals are decision support, not certainty."
-        f_cell(0, row, "QUANTARA VISION", C_CRYPTO), f_cell(1, row, "v0.6.0" + (showGuide ? " ⓘ" : ""), C_MUTED, C_PANEL, text.align_left, showGuide ? guideTip : ""), f_cell(2, row, syminfo.ticker, C_TEXT), f_cell(3, row, timeframe.period, C_MUTED), row += 1
+        f_cell(0, row, "QUANTARA VISION", C_CRYPTO), f_cell(1, row, "v0.6.1" + (showGuide ? " ⓘ" : ""), C_MUTED, C_PANEL, text.align_left, showGuide ? guideTip : ""), f_cell(2, row, syminfo.ticker, C_TEXT), f_cell(3, row, timeframe.period, C_MUTED), row += 1
         f_cell(0, row, stateText, stateColor, C_PANEL, text.align_left, "Current setup lifecycle. Candidate means conditions passed the score threshold; it does not imply certainty."), f_cell(1, row, activeState ? setupName : rawSetupName, C_TEXT, C_PANEL, text.align_left, "Detected setup family. Candle patterns contribute only when aligned with structure, level, trend, session, sweep, or retest context."), f_cell(2, row, "SCORE", C_MUTED, C_PANEL, text.align_left, "Explainable confidence score from 0 to 100 after penalties. Higher is stronger, not certain."), f_cell(3, row, str.tostring(math.round(activeState ? activeScore : rawScore)) + " · " + panelQuality, panelQuality == "QUALITY A" ? C_BULL : panelQuality == "QUALITY B" ? C_INFO : C_WARN, C_PANEL, text.align_right, "Quality A requires all five independent readiness checks and score 80+. Quality B requires all checks and the configured minimum score. Neither is a win-rate claim."), row += 1
         f_cell(0, row, "REGIME", C_MUTED, C_PANEL, text.align_left, "Confirmed structure and EMA context: BULL, BEAR, or RANGE."), f_cell(1, row, f_dir_text(structureDir), f_dir_color(structureDir)), f_cell(2, row, "SESSION", C_MUTED, C_PANEL, text.align_left, marketStatusTip), f_cell(3, row, showMarketStatus ? marketStatus : activeSession, C_INFO, C_PANEL, text.align_left, marketStatusTip), row += 1
         if not activeState and displayMode != "Minimal"
@@ -1167,7 +1171,7 @@ if barstate.islast
         f_cell(0, row, "DEBUG", C_CRYPTO), f_cell(1, row, "Requests " + str.tostring(estimatedReq) + "/40", estimatedReq <= 36 ? C_BULL : C_WARN), f_cell(2, row, marketType + " · " + styleEff, C_TEXT), f_cell(3, row, resourceProfile, C_MUTED)
 
 string readableAlert = "Quantara Vision | " + syminfo.tickerid + " | " + timeframe.period + " | " + signalState + " | " + (signalDirection > 0 ? "LONG" : signalDirection < 0 ? "SHORT" : "NONE") + " | score=" + str.tostring(activeState ? activeScore : rawScore, "#.0")
-string jsonAlert = "{\"product\":\"Quantara Vision\",\"version\":\"0.6.0\",\"symbol\":\"" + syminfo.tickerid + "\",\"timeframe\":\"" + timeframe.period + "\",\"market_type\":\"" + marketType + "\",\"state\":\"" + signalState + "\",\"direction\":\"" + (signalDirection > 0 ? "long" : signalDirection < 0 ? "short" : "none") + "\",\"score\":" + f_json_num(activeState ? activeScore : rawScore) + ",\"setup\":\"" + setupName + "\",\"entry\":" + f_json_num(entry) + ",\"stop\":" + f_json_num(stop) + ",\"tp1\":" + f_json_num(tp1) + ",\"tp2\":" + f_json_num(tp2) + ",\"tp3\":" + f_json_num(tp3) + ",\"rr\":" + f_json_num(netRR) + ",\"event_risk\":" + (eventBlackout ? "true" : "false") + ",\"timestamp\":" + str.tostring(time_close) + "}"
+string jsonAlert = "{\"product\":\"Quantara Vision\",\"version\":\"0.6.1\",\"symbol\":\"" + syminfo.tickerid + "\",\"timeframe\":\"" + timeframe.period + "\",\"market_type\":\"" + marketType + "\",\"state\":\"" + signalState + "\",\"direction\":\"" + (signalDirection > 0 ? "long" : signalDirection < 0 ? "short" : "none") + "\",\"score\":" + f_json_num(activeState ? activeScore : rawScore) + ",\"setup\":\"" + setupName + "\",\"entry\":" + f_json_num(entry) + ",\"stop\":" + f_json_num(stop) + ",\"tp1\":" + f_json_num(tp1) + ",\"tp2\":" + f_json_num(tp2) + ",\"tp3\":" + f_json_num(tp3) + ",\"rr\":" + f_json_num(netRR) + ",\"event_risk\":" + (eventBlackout ? "true" : "false") + ",\"timestamp\":" + str.tostring(time_close) + "}"
 bool runtimeCandidateAlerts = alertWorkflow == "Candidate Only" or alertWorkflow == "All"
 bool runtimeManagementAlerts = alertWorkflow == "Plan Management" or alertWorkflow == "All"
 bool runtimeRiskAlerts = alertWorkflow == "Risk Only" or alertWorkflow == "All"

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.1
+
+- Increased the default visibility of confirmed market-structure labels from tiny to normal size.
+- Added a `Chart Label Size` setting with Compact, Normal, and Large choices for `HH`, `HL`, `LH`, `LL`, `BOS`, `CHoCH`, and liquidity-sweep labels.
+
 ## v0.6.0
 
 - Added a compact five-gate decision ladder: Context, Location, Trigger, Economics, and Safety.
