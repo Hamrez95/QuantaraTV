@@ -1,5 +1,5 @@
 //@version=6
-indicator("Quantara Vision v0.6.1", "Quantara Vision", overlay = true, max_bars_back = 1500, max_lines_count = 240, max_labels_count = 160, max_boxes_count = 80, dynamic_requests = true)
+indicator("Quantara Vision v0.6.2", "Quantara Vision", overlay = true, max_bars_back = 1500, max_lines_count = 240, max_labels_count = 160, max_boxes_count = 80, dynamic_requests = true)
 
 // Quantara Vision is decision support, not financial advice. Confirmed signals use closed bars.
 // External headlines/order flow are intentionally unavailable in Pine; event slots are user supplied.
@@ -77,6 +77,7 @@ float breakoutAtr = input.float(0.12, "Breakout Confirmation · ATR", 0, 1, 0.01
 int structureExpiry = input.int(120, "Setup Expiry Bars", 10, 500, group = G05)
 
 bool showLevels = input.bool(true, "Show Levels", group = G06, tooltip = "Teal = support; coral = resistance. Dashed = tested more than once; dotted and faded = broken.")
+string levelLabelMode = input.string("Compact", "Level Labels", options = ["Off", "Compact", "Detailed"], group = G06, tooltip = "Writes a small tag beside each active level. S = support, R = resistance, and × is the clustered pivot-touch count. Detailed also says Fresh, Tested, or Broken.")
 int maxLevels = input.int(5, "Maximum Visible Levels", 2, 16, group = G06)
 float clusterAtr = input.float(0.35, "Clustering Distance · ATR", 0.05, 2, 0.05, group = G06)
 int levelLookback = input.int(300, "Level Lookback", 50, 1000, group = G06)
@@ -195,8 +196,8 @@ float forexLotUnits = input.float(100000, "Forex Standard Lot Units", 1, group =
 float pipSizeInput = input.float(0.0001, "Forex Pip Size", 0.000001, group = G16)
 float leverageCap = input.float(3, "Crypto Leverage Cap", 1, 100, 0.5, group = G16)
 float liquidationBufferPct = input.float(15, "Liquidation Buffer %", 1, 90, 1, group = G16)
-float tp1ClosePct = input.float(40, "TP1 Suggested Close %", 0, 0, 100, 5, group = G16)
-float tp2ClosePct = input.float(30, "TP2 Suggested Close %", 0, 0, 100, 5, group = G16)
+float tp1ClosePct = input.float(40, "TP1 Suggested Close %", minval = 0, maxval = 100, step = 5, group = G16)
+float tp2ClosePct = input.float(30, "TP2 Suggested Close %", minval = 0, maxval = 100, step = 5, group = G16)
 string afterTp1Action = input.string("Move Stop To Break-even", "After TP1", options = ["Keep Original Stop", "Move Stop To Break-even"], group = G16, tooltip = "A displayed management instruction and alert. Pine does not submit, amend, or close any exchange order.")
 bool trailAfterTp2 = input.bool(true, "After TP2 · Trail Remaining Position", group = G16, tooltip = "Displays runner-management guidance after TP2. It is not broker order execution.")
 int closedPlanHistorySize = input.int(5, "Closed Plan History", 0, 10, group = G16, tooltip = "Keeps a bounded chart-panel log of finished plans. It is a decision record, not verified broker fill history.")
@@ -383,6 +384,7 @@ var array<int> srTouches = array.new<int>()
 var array<bool> srIsSupport = array.new<bool>()
 var array<line> srLines = array.new<line>()
 var array<int> srBrokenBar = array.new<int>()
+var array<label> srLabels = array.new<label>()
 
 f_structure_label_size() =>
     structureLabelSize == "Compact" ? size.small : structureLabelSize == "Large" ? size.large : size.normal
@@ -411,12 +413,15 @@ f_add_level(float price, bool support, int originBar) =>
         line ln = line.new(math.max(originBar, bar_index - levelLookback), price, bar_index + 1, price, extend = extend.right, color = color.new(support ? C_BULL : C_BEAR, 38), width = 1)
         array.push(srLines, ln)
         array.push(srBrokenBar, na)
+        label tag = label.new(bar_index + 1, price, "", style = label.style_label_left, color = color.new(C_PANEL, 100), textcolor = color.new(C_TEXT, 100), size = size.small)
+        array.push(srLabels, tag)
         if array.size(srPrices) > maxLevels
             array.shift(srPrices)
             array.shift(srTouches)
             array.shift(srIsSupport)
             array.shift(srBrokenBar)
             line.delete(array.shift(srLines))
+            label.delete(array.shift(srLabels))
 
 f_nearest_level(bool wantSupport) =>
     float best = na
@@ -471,7 +476,18 @@ if showLevels and array.size(srPrices) > 0
         line.set_x2(ln, bar_index + 1)
         line.set_style(ln, recentlyBroken ? line.style_dotted : touches >= 2 ? line.style_dashed : line.style_solid)
         line.set_width(ln, touches >= 3 ? 2 : 1)
-        line.set_color(ln, color.new(array.get(srIsSupport, i) ? C_BULL : C_BEAR, recentlyBroken ? 65 : touches >= 2 ? 45 : 25))
+        bool isSupport = array.get(srIsSupport, i)
+        color levelColor = isSupport ? C_BULL : C_BEAR
+        line.set_color(ln, color.new(levelColor, recentlyBroken ? 65 : touches >= 2 ? 45 : 25))
+        label tag = array.get(srLabels, i)
+        bool showTag = levelLabelMode != "Off"
+        string levelState = recentlyBroken ? "Broken" : touches >= 2 ? "Tested" : "Fresh"
+        string levelTagText = levelLabelMode == "Detailed" ? (isSupport ? "SUPPORT" : "RESISTANCE") + " · " + levelState + " · " + str.tostring(touches) + "×" : (isSupport ? "S " : "R ") + str.tostring(touches) + "×"
+        label.set_x(tag, bar_index + 1)
+        label.set_y(tag, lp)
+        label.set_text(tag, showTag ? levelTagText : "")
+        label.set_color(tag, color.new(C_PANEL, showTag ? 15 : 100))
+        label.set_textcolor(tag, color.new(levelColor, showTag ? (recentlyBroken ? 45 : 0) : 100))
 
 bool bullStructure = not na(lastHigh) and not na(prevHigh) and not na(lastLow) and not na(prevLow) and lastHigh > prevHigh and lastLow > prevLow
 bool bearStructure = not na(lastHigh) and not na(prevHigh) and not na(lastLow) and not na(prevLow) and lastHigh < prevHigh and lastLow < prevLow
@@ -860,14 +876,16 @@ bool stopStreakCooldown = consecutiveStops >= maxConsecutiveStops and not na(las
 string guardrailReason = eventBlackout ? eventStatus : dailyPlanLimit ? "DAILY PLAN LIMIT" : dailyRiskLimit ? "DAILY RISK BUDGET" : stopStreakCooldown ? "STOP-STREAK COOLDOWN" : ""
 bool candidate = signalsAllowed and barConfirmed and rawDirection != 0 and rawScore >= minScoreEff and not blockedByEvent and not dailyPlanLimit and not dailyRiskLimit and not stopStreakCooldown
 bool earlyWatch = signalsAllowed and (longContext and longLocation or shortContext and shortLocation) and not candidate
-bool contextGate = rawDirection > 0 ? longContext : rawDirection < 0 ? shortContext : false
-bool locationGate = rawDirection > 0 ? longLocation : rawDirection < 0 ? shortLocation : false
-bool triggerGate = rawDirection > 0 ? longTrigger : rawDirection < 0 ? shortTrigger : false
-bool economicsGate = rawDirection > 0 ? longEconomicsPass : rawDirection < 0 ? shortEconomicsPass : false
+// A WATCH has no finished candidate direction yet. Show the stronger provisional side so its gate count is useful instead of misleadingly reading 1/5.
+int assessmentDirection = rawDirection != 0 ? rawDirection : longScore > shortScore ? 1 : shortScore > longScore ? -1 : structureDir
+bool contextGate = assessmentDirection > 0 ? longContext : assessmentDirection < 0 ? shortContext : false
+bool locationGate = assessmentDirection > 0 ? longLocation : assessmentDirection < 0 ? shortLocation : false
+bool triggerGate = assessmentDirection > 0 ? longTrigger : assessmentDirection < 0 ? shortTrigger : false
+bool economicsGate = assessmentDirection > 0 ? longEconomicsPass : assessmentDirection < 0 ? shortEconomicsPass : false
 bool safetyGate = guardrailReason == ""
 int readinessCount = (contextGate ? 1 : 0) + (locationGate ? 1 : 0) + (triggerGate ? 1 : 0) + (economicsGate ? 1 : 0) + (safetyGate ? 1 : 0)
 string readinessText = "C" + (contextGate ? "✓" : "·") + " L" + (locationGate ? "✓" : "·") + " T" + (triggerGate ? "✓" : "·") + " E" + (economicsGate ? "✓" : "·") + " S" + (safetyGate ? "✓" : "!")
-string qualityText = rawDirection == 0 ? "WATCH" : readinessCount == 5 and rawScore >= 80 ? "QUALITY A" : readinessCount == 5 and rawScore >= minScoreEff ? "QUALITY B" : "WATCH"
+string qualityText = rawDirection == 0 ? (assessmentDirection > 0 ? "LONG WATCH" : assessmentDirection < 0 ? "SHORT WATCH" : "WATCH") : readinessCount == 5 and rawScore >= 80 ? "QUALITY A" : readinessCount == 5 and rawScore >= minScoreEff ? "QUALITY B" : "WATCH"
 
 var string signalState = "None"
 var int signalDirection = 0
@@ -1098,7 +1116,7 @@ if barstate.islast
         string panelQuality = activeState ? activeQuality : qualityText
         string stateText = signalState == "Candidate" or signalState == "Active Plan" ? (signalDirection > 0 ? "▲ LONG ACTIVE" : "▼ SHORT ACTIVE") : signalState == "Protected" ? "◈ TP1 · PROTECTED" : signalState == "Runner" ? "◈ TP2 · RUNNER" : signalState == "TP1 Hit" ? "◈ TP1 HIT" : signalState == "TP2 Hit" ? "◈ TP2 HIT" : signalState == "Early Watch" ? "◆ EARLY WATCH" : signalState == "Closed Stop" ? "× CLOSED · STOP" : signalState == "Closed TP3" ? "✓ CLOSED · TP3" : signalState == "Ambiguous Bar" ? "⚠ AMBIGUOUS BAR" : signalState == "Expired Event" ? "⛔ EXPIRED · EVENT" : signalState == "High Risk" or eventBlackout ? "⛔ NO NEW TRADES" : "— NO TRADE"
         string guideTip = "Color guide: teal ▲ = bullish/support/target; coral ▼ = bearish/resistance/stop; amber ◆ = wait or warning; blue = entry or information; purple = broader context. Signals are decision support, not certainty."
-        f_cell(0, row, "QUANTARA VISION", C_CRYPTO), f_cell(1, row, "v0.6.1" + (showGuide ? " ⓘ" : ""), C_MUTED, C_PANEL, text.align_left, showGuide ? guideTip : ""), f_cell(2, row, syminfo.ticker, C_TEXT), f_cell(3, row, timeframe.period, C_MUTED), row += 1
+        f_cell(0, row, "QUANTARA VISION", C_CRYPTO), f_cell(1, row, "v0.6.2" + (showGuide ? " ⓘ" : ""), C_MUTED, C_PANEL, text.align_left, showGuide ? guideTip : ""), f_cell(2, row, syminfo.ticker, C_TEXT), f_cell(3, row, timeframe.period, C_MUTED), row += 1
         f_cell(0, row, stateText, stateColor, C_PANEL, text.align_left, "Current setup lifecycle. Candidate means conditions passed the score threshold; it does not imply certainty."), f_cell(1, row, activeState ? setupName : rawSetupName, C_TEXT, C_PANEL, text.align_left, "Detected setup family. Candle patterns contribute only when aligned with structure, level, trend, session, sweep, or retest context."), f_cell(2, row, "SCORE", C_MUTED, C_PANEL, text.align_left, "Explainable confidence score from 0 to 100 after penalties. Higher is stronger, not certain."), f_cell(3, row, str.tostring(math.round(activeState ? activeScore : rawScore)) + " · " + panelQuality, panelQuality == "QUALITY A" ? C_BULL : panelQuality == "QUALITY B" ? C_INFO : C_WARN, C_PANEL, text.align_right, "Quality A requires all five independent readiness checks and score 80+. Quality B requires all checks and the configured minimum score. Neither is a win-rate claim."), row += 1
         f_cell(0, row, "REGIME", C_MUTED, C_PANEL, text.align_left, "Confirmed structure and EMA context: BULL, BEAR, or RANGE."), f_cell(1, row, f_dir_text(structureDir), f_dir_color(structureDir)), f_cell(2, row, "SESSION", C_MUTED, C_PANEL, text.align_left, marketStatusTip), f_cell(3, row, showMarketStatus ? marketStatus : activeSession, C_INFO, C_PANEL, text.align_left, marketStatusTip), row += 1
         if not activeState and displayMode != "Minimal"
@@ -1119,7 +1137,7 @@ if barstate.islast
         f_cell(0, row, "RISKS", C_CRYPTO, C_PANEL, text.align_left, "Main reasons to wait, reduce confidence, or reject a setup."), f_cell(1, row, mtfConflict ? "MTF conflict" : excessiveVol ? "High volatility" : volCompression ? "Compression" : "—", mtfConflict or excessiveVol ? C_WARN : C_MUTED), f_cell(2, row, lowVolume ? "Low volume" : highEventRisk ? "Event risk" : volExpansion ? "Expansion" : "—", lowVolume or highEventRisk ? C_WARN : C_MUTED), f_cell(3, row, volumeQuality, C_MUTED), row += 1
         if beginnerMode and compactMode
             string simpleContext = isCrypto and enableCrypto ? cryptoNarrative : isForex and enableForex ? fxNarrative : enableGlobal and balancedContext ? globalNarrative : "Technical context only"
-            f_cell(0, row, "CONTEXT", C_CRYPTO, C_PANEL, text.align_left, "Broader market context. It has a small score weight and is never a certain prediction."), f_cell(1, row, simpleContext, C_TEXT), f_cell(2, row, "Decision support only", C_MUTED), f_cell(3, row, "Risk control required", C_WARN), row += 1
+            f_cell(0, row, "CONTEXT", C_CRYPTO, C_PANEL, text.align_left, "Broader market context. It has a small score weight and is never a certain prediction."), f_cell(1, row, simpleContext, C_TEXT), f_cell(2, row, "MODE", C_MUTED), f_cell(3, row, "Manual only", C_MUTED, C_PANEL, text.align_left, "Quantara Vision never opens, closes, or verifies an exchange position. This is an availability note, not a signal block."), row += 1
         if isCrypto and enableCrypto and not (beginnerMode and compactMode)
             f_cell(0, row, "CRYPTO CONTEXT", C_CRYPTO, C_PANEL, text.align_left, "Limited-weight context from dominance, market-cap proxies, Bitcoin leadership, and current-symbol correlation. It is not a prediction."), f_cell(1, row, cryptoNarrative, C_TEXT), f_cell(2, row, "BTC corr", C_MUTED, C_PANEL, text.align_left, "Rolling correlation between the chart symbol and Bitcoin."), f_cell(3, row, na(btcCorrelation) ? "—" : str.tostring(btcCorrelation, "#.##"), C_TEXT), row += 1
         if isForex and enableForex and not (beginnerMode and compactMode)
@@ -1171,7 +1189,7 @@ if barstate.islast
         f_cell(0, row, "DEBUG", C_CRYPTO), f_cell(1, row, "Requests " + str.tostring(estimatedReq) + "/40", estimatedReq <= 36 ? C_BULL : C_WARN), f_cell(2, row, marketType + " · " + styleEff, C_TEXT), f_cell(3, row, resourceProfile, C_MUTED)
 
 string readableAlert = "Quantara Vision | " + syminfo.tickerid + " | " + timeframe.period + " | " + signalState + " | " + (signalDirection > 0 ? "LONG" : signalDirection < 0 ? "SHORT" : "NONE") + " | score=" + str.tostring(activeState ? activeScore : rawScore, "#.0")
-string jsonAlert = "{\"product\":\"Quantara Vision\",\"version\":\"0.6.1\",\"symbol\":\"" + syminfo.tickerid + "\",\"timeframe\":\"" + timeframe.period + "\",\"market_type\":\"" + marketType + "\",\"state\":\"" + signalState + "\",\"direction\":\"" + (signalDirection > 0 ? "long" : signalDirection < 0 ? "short" : "none") + "\",\"score\":" + f_json_num(activeState ? activeScore : rawScore) + ",\"setup\":\"" + setupName + "\",\"entry\":" + f_json_num(entry) + ",\"stop\":" + f_json_num(stop) + ",\"tp1\":" + f_json_num(tp1) + ",\"tp2\":" + f_json_num(tp2) + ",\"tp3\":" + f_json_num(tp3) + ",\"rr\":" + f_json_num(netRR) + ",\"event_risk\":" + (eventBlackout ? "true" : "false") + ",\"timestamp\":" + str.tostring(time_close) + "}"
+string jsonAlert = "{\"product\":\"Quantara Vision\",\"version\":\"0.6.2\",\"symbol\":\"" + syminfo.tickerid + "\",\"timeframe\":\"" + timeframe.period + "\",\"market_type\":\"" + marketType + "\",\"state\":\"" + signalState + "\",\"direction\":\"" + (signalDirection > 0 ? "long" : signalDirection < 0 ? "short" : "none") + "\",\"score\":" + f_json_num(activeState ? activeScore : rawScore) + ",\"setup\":\"" + setupName + "\",\"entry\":" + f_json_num(entry) + ",\"stop\":" + f_json_num(stop) + ",\"tp1\":" + f_json_num(tp1) + ",\"tp2\":" + f_json_num(tp2) + ",\"tp3\":" + f_json_num(tp3) + ",\"rr\":" + f_json_num(netRR) + ",\"event_risk\":" + (eventBlackout ? "true" : "false") + ",\"timestamp\":" + str.tostring(time_close) + "}"
 bool runtimeCandidateAlerts = alertWorkflow == "Candidate Only" or alertWorkflow == "All"
 bool runtimeManagementAlerts = alertWorkflow == "Plan Management" or alertWorkflow == "All"
 bool runtimeRiskAlerts = alertWorkflow == "Risk Only" or alertWorkflow == "All"
