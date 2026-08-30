@@ -53,6 +53,7 @@ grep -q 'Ambiguous Bar' "$indicator"
 grep -q 'QUALITY A' "$indicator"
 grep -q 'Show Faded Archived Plans' "$indicator"
 grep -q 'Alert Workflow' "$indicator"
+grep -q 'Chart Label Size' "$indicator"
 grep -q 'companion-news-bridge.md' "$root/CHANGELOG.md"
 grep -q 'trader-workflow-audit-v0.6.0.md' "$root/CHANGELOG.md"
 if grep -REn 'TODO|FIXME|guaranteed|risk-free|institutional signal|90% win rate' "$root/src"; then
