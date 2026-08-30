@@ -3,7 +3,7 @@
 1. Open TradingView and a representative chart.
 2. Open **Pine Editor**.
 3. Create a new indicator and replace its contents with `src/quantara_vision.pine`.
-4. Save as **Quantara Vision v0.6.0** and select **Add to chart**.
+4. Save as **Quantara Vision v0.6.1** and select **Add to chart**.
 5. Begin with `Preset = Balanced`, `Trading Style = Intraday`, `Display Mode = Compact`, `Market = Auto`, and `Resource Profile = Balanced`.
 6. Open Settings → Debug only when checking request budget or detected market type.
 7. For Strategy Tester, repeat with `src/quantara_validation_strategy.pine` in a separate Pine script.

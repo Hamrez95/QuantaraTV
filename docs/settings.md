@@ -20,6 +20,7 @@ Display modes follow the Design Freeze: Full, Compact, Minimal, Radar Focus, Sig
 - `Session Background Master Switch`: off. Vertical background bands are session shading, not signals.
 - `Previous Asia High / Low`: off. Enable it only when trading an Asia-range breakout method.
 - `Enable Pivot Trendlines`: controls trendlines calculated on the chart timeframe. Its 5m, 15m, 1h, 4h, 1D, and Other TF switches decide which chart timeframes display them.
+- In **Market Structure**, `Chart Label Size` controls only the chart annotations such as `HH`, `HL`, `LH`, `LL`, `BOS`, and `CHoCH`. It defaults to **Normal** for readability; choose **Large** on a high-resolution display or when you sit farther from the chart. It does not change the calculation or signal score.
 - `Enable Higher-TF Trendlines / Channels`: controls overlays sourced from the five MTF inputs. To inspect a confirmed 4H channel on a 1H chart, leave `TF 4 = 240`, enable the master switch and `TF 4`, then optionally keep `Draw Parallel Higher-TF Channel` on.
 - `Show Active Entry / Stop / Targets` and `Fill Risk / Reward Zones`: on. Completed, expired, or invalidated plans are removed from the chart.
 - `Show Confirmed Pattern Labels`: off for a clean chart. Pattern detection and scoring remain active while labels are hidden.
